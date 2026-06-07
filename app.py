@@ -1,6 +1,6 @@
 import io
 import os
-import urlib.request
+import urllib.request
 
 import numpy as np
 import streamlit as st
