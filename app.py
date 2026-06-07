@@ -55,13 +55,14 @@ def load_segmentation_model():
     return model, device
 
 
-def read_tiff(uploaded_file):
+def read_image(uploaded_file):
     image = Image.open(uploaded_file)
 
-    try:
-        image = next(ImageSequence.Iterator(image))
-    except Exception:
-        pass
+    if uploaded_file.name.lower().endswith((".tif", ".tiff")):
+        try:
+            image = next(ImageSequence.Iterator(image))
+        except Exception:
+            pass
 
     image = image.convert("RGB")
     return image
@@ -135,14 +136,15 @@ def image_to_png_bytes(image):
 
 def main():
     st.set_page_config(
-        page_title="TIFF Segmentation App",
+        page_title="Image Segmentation App",
         layout="wide"
     )
 
-    st.title("TIFF Segmentation App")
+    st.title("Image Segmentation App")
     st.write(
-        "Загрузи `.tif` или `.tiff`, приложение построит сегментационную маску "
-        "и наложит её поверх изображения")
+        "Загрузи изображение в формате `.tif`, `.tiff`, `.png`, `.jpg` или `.jpeg`. "
+        "Приложение построит сегментационную маску и наложит её поверх изображения."
+    )
 
     with st.sidebar:
         st.header("Настройки")
@@ -171,14 +173,31 @@ def main():
         st.write("Файл весов:")
         st.code(WEIGHTS_PATH)
 
+        st.write("Поддерживаемые форматы:")
+        st.code(".tif, .tiff, .png, .jpg, .jpeg")
+
+    st.subheader("Загрузка изображения")
+
     uploaded_file = st.file_uploader(
-        "Загрузи TIFF-файл",
-        type=["tif", "tiff"],
+        "Выбери изображение",
+        type=["tif", "tiff", "png", "jpg", "jpeg"],
     )
 
     if uploaded_file is None:
-        st.info("Загрузи изображение в формате `.tif` или `.tiff`.")
+        st.info("Загрузи изображение в формате `.tif`, `.tiff`, `.png`, `.jpg` или `.jpeg`.")
         return
+
+    try:
+        image = read_image(uploaded_file)
+    except Exception as e:
+        st.error("Не получилось открыть изображение.")
+        st.exception(e)
+        return
+
+    st.success(
+        f"Файл загружен: `{uploaded_file.name}`. "
+        f"Размер изображения: {image.size[0]} x {image.size[1]}"
+    )
 
     try:
         model, device = load_segmentation_model()
@@ -186,18 +205,6 @@ def main():
         st.error("Ошибка при загрузке модели или весов.")
         st.exception(e)
         return
-
-    try:
-        image = read_tiff(uploaded_file)
-    except Exception as e:
-        st.error("Не получилось открыть TIFF-файл.")
-        st.exception(e)
-        return
-
-    st.success(
-        f"Файл загружен. Размер изображения: "
-        f"{image.size[0]} x {image.size[1]}"
-    )
 
     if st.button("Запустить сегментацию"):
         with st.spinner("Модель строит маску..."):
