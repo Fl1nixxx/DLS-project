@@ -75,5 +75,5 @@ class FLnet(nn.Module):
         output = self.last_layer(x0_4)
         return output
 
-def build_model():
-  return FLnet()
+def build_model(in_channels=3, out_channels=1):
+  return FLnet(in_channels = in_channels, out_channels = out_channels)
