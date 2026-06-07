@@ -73,9 +73,9 @@ def preprocess_image(image):
         transforms.Normalize(mean=NORMALIZE_MEAN, std=NORMALIZE_STD)
     ]
 
-    transform = transforms.Compose([)
-
+    transform = transforms.Compose(transform_list)
     x = transform(image)
+    
     x = x.unsqueeze(0)
 
     return x
