@@ -13,7 +13,7 @@ from model import build_model
 
 #Settings
 WEIGHTS_PATH = "best_weights.pth"
-WEIGHTS_URL = "https://github.com/Fl1nixxx/DLS-project/releases/download/v1.1/best_weights.pth"
+WEIGHTS_URL = "https://github.com/Fl1nixxx/DLS-project/releases/download/v1.2/best_weights.pth"
 
 IMAGE_SIZE = 352
 NORMALIZE_MEAN = [0.485, 0.456, 0.406]
