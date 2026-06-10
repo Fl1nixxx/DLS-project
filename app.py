@@ -1,17 +1,21 @@
 import io
 import os
-import urllib.request
 
 import numpy as np
+
+import urllib.request
+import rasterio
+from rasterio.io import MemoryFile
+
 import streamlit as st
-import torch
 
 from PIL import Image, ImageSequence
+import cv2
+import torch
 from torchvision import transforms
 
 from model import build_model
 
-#Settings
 WEIGHTS_PATH = "best_weights.pth"
 WEIGHTS_URL = "https://github.com/Fl1nixxx/DLS-project/releases/download/v1.2/best_weights.pth"
 
@@ -31,29 +35,32 @@ def download_weights():
 @st.cache_resource
 def load_segmentation_model():
     download_weights()
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    model = build_model(in_channels=3, out_channels=1)
-
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = build_model(in_channels=3, out_channels=1).to(device)
+    
     checkpoint = torch.load(WEIGHTS_PATH, map_location=device)
-
-    if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
-        state_dict = checkpoint["state_dict"]
-    else:
-        state_dict = checkpoint
-
-    clean_state_dict = {}
-    for key, value in state_dict.items():
-        clean_key = key.replace("module.", "")
-        clean_state_dict[clean_key] = value
-
-    model.load_state_dict(clean_state_dict)
-    model.to(device)
+    state_dict = checkpoint.get("state_dict", checkpoint) if isinstance(checkpoint, dict) else checkpoint
+    
+    model.load_state_dict(state_dict)
     model.eval()
-
     return model, device
 
+
+def define_pixel_area(uploaded_file):
+    uploaded_file.seek(0)
+    with MemoryFile(uploaded_file.read()) as memfile:
+        with memfile.open() as src:
+            crs = src.crs
+            x, y = src.res
+            if crs and crs.is_projected:
+                pixel_area = x * y
+            else:
+                lat = src.bounds.bottom + (src.bounds.top - src.bounds.bottom) / 2
+                meters_per_degree_lat = 111132
+                meters_per_degree_lon = meters_per_degree_lat * math.cos(math.radians(lat))
+                pixel_area = (x * meters_per_degree_lon) * (y * meters_per_degree_lat)
+    return pixel_area
 
 def read_image(uploaded_file):
     image = Image.open(uploaded_file)
@@ -71,8 +78,7 @@ def preprocess_image(image):
     transform_list = [
         transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=NORMALIZE_MEAN, std=NORMALIZE_STD)
-    ]
+        transforms.Normalize(mean=NORMALIZE_MEAN, std=NORMALIZE_STD)]
 
     transform = transforms.Compose(transform_list)
     x = transform(image)
@@ -134,36 +140,82 @@ def image_to_png_bytes(image):
     buffer.seek(0)
     return buffer.getvalue()
 
+def count_building_area(image, mask, pixel_area, noise_threshold=7):
+
+    FONT_SIZE = 3.0
+    THICKNESS = 8
+    PADDING = 25
+
+    TEXT_COLOR = (255, 255, 255)
+    BG_COLOR = (0, 0, 0)
+
+    result_img = np.array(image).copy()
+
+    binary_mask = np.array(mask)
+    if binary_mask.max() == 1:
+        binary_mask = (binary_mask * 255).astype(np.uint8)
+    else:
+        binary_mask = (binary_mask > 127).astype(np.uint8) * 255
+    
+    contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    building_idx = 0
+    buildings_report = []
+
+    for cnt in contours:
+        pixel_count = cv2.contourArea(cnt)
+        area_sqm = pixel_count * pixel_area
+
+        if area_sqm < noise_threshold:
+            continue
+
+        building_idx += 1
+        area_rounded = round(area_sqm, 2)
+        buildings_report.append((building_idx, area_rounded))
+
+        cv2.drawContours(result_img, [cnt], -1, (0, 255, 0), 3)
+
+        x, y, w, h = cv2.boundingRect(cnt)
+
+        text = f"ID {building_idx}: {area_rounded} m2"
+
+        (text_width, text_height), baseline = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, FONT_SIZE, THICKNESS)
+
+        text_x = int(x + w / 2) - int(text_width / 2)
+        text_y = int(y + h / 2) + int(text_height / 2)
+
+        box_x1 = text_x - PADDING
+        box_y1 = text_y - text_height - PADDING
+        box_x2 = text_x + text_width + PADDING
+        box_y2 = text_y + baseline + PADDING
+
+        cv2.rectangle(result_img, (box_x1, box_y1), (box_x2, box_y2), BG_COLOR, -1)
+
+        cv2.rectangle(result_img, (box_x1, box_y1), (box_x2, box_y2), (255, 255, 255), 4)
+
+        cv2.putText(result_img,text,(text_x, text_y),cv2.FONT_HERSHEY_SIMPLEX,FONT_SIZE,TEXT_COLOR,THICKNESS,cv2.LINE_AA)
+    
+    return result_img
+
+
+
+
 def main():
     st.set_page_config(
         page_title="Image Segmentation App",
-        layout="wide"
-    )
+        layout="wide")
 
     st.title("Image Segmentation App")
     st.write(
         "Загрузи изображение в формате `.tif`, `.tiff`, `.png`, `.jpg` или `.jpeg`. "
-        "Приложение построит сегментационную маску и наложит её поверх изображения."
-    )
+        "Приложение построит сегментационную маску и наложит её поверх изображения.")
 
     with st.sidebar:
         st.header("Настройки")
 
-        threshold = st.slider(
-            "Порог сегментации",
-            min_value=0.0,
-            max_value=1.0,
-            value=0.5,
-            step=0.05,
-        )
+        threshold = st.slider("Порог сегментации",min_value=0.0,max_value=1.0,value=0.5,step=0.05,)
 
-        alpha = st.slider(
-            "Прозрачность маски",
-            min_value=0.0,
-            max_value=1.0,
-            value=0.45,
-            step=0.05,
-        )
+        alpha = st.slider("Прозрачность маски",min_value=0.0,max_value=1.0,value=0.45,step=0.05,)
 
         st.divider()
 
@@ -180,8 +232,7 @@ def main():
 
     uploaded_file = st.file_uploader(
         "Выбери изображение",
-        type=["tif", "tiff", "png", "jpg", "jpeg"],
-    )
+        type=["tif", "tiff", "png", "jpg", "jpeg"],)
 
     if uploaded_file is None:
         st.info("Загрузи изображение в формате `.tif`, `.tiff`, `.png`, `.jpg` или `.jpeg`.")
@@ -196,8 +247,7 @@ def main():
 
     st.success(
         f"Файл загружен: `{uploaded_file.name}`. "
-        f"Размер изображения: {image.size[0]} x {image.size[1]}"
-    )
+        f"Размер изображения: {image.size[0]} x {image.size[1]}")
 
     try:
         model, device = load_segmentation_model()
@@ -209,20 +259,11 @@ def main():
     if st.button("Запустить сегментацию"):
         with st.spinner("Модель строит маску..."):
             try:
-                mask = predict_mask(
-                    model=model,
-                    device=device,
-                    image=image,
-                    threshold=threshold,
-                )
+                mask = predict_mask(model=model,device=device,image=image,threshold=threshold,)
 
                 mask_image = make_mask_image(mask)
 
-                overlay = make_overlay(
-                    image=image,
-                    mask=mask,
-                    alpha=alpha,
-                )
+                overlay = make_overlay(image=image,mask=mask,alpha=alpha,)
 
             except Exception as e:
                 st.error("Ошибка во время предсказания.")
@@ -243,20 +284,20 @@ def main():
             st.subheader("Overlay")
             st.image(overlay, use_container_width=True)
 
-        st.download_button(
-            label="Скачать overlay PNG",
-            data=image_to_png_bytes(overlay),
-            file_name="overlay.png",
-            mime="image/png",
-        )
+        st.download_button(label="Скачать overlay PNG",data=image_to_png_bytes(overlay),file_name="overlay.png",mime="image/png",)
 
-        st.download_button(
-            label="Скачать mask PNG",
-            data=image_to_png_bytes(mask_image),
-            file_name="mask.png",
-            mime="image/png",
-        )
+        st.download_button(label="Скачать mask PNG",data=image_to_png_bytes(mask_image),file_name="mask.png",mime="image/png",)
+        
+        try:
+            pixel_area = define_pixel_area(uploaded_file)
+            area_map = count_building_area(image, mask, pixel_area, noise_threshold=7)
 
+            st.subheader("Building area")
+            st.image(area_map, use_container_width=True)
+        except Exception as e:
+            st.warning("Не удалось рассчитать гео-координаты. Возможно, файл не содержит метаданных (не GeoTIFF).")
+            st.exception(e)
+            return
 
 if __name__ == "__main__":
     main()
