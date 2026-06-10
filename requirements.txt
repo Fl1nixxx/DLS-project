@@ -1,0 +1,11 @@
+torch
+torchvision
+torchmetrics
+segmentation-models-pytorch
+albumentations
+numpy
+rasterio
+streamlit
+opencv-python-headless
+pillow
+matplotlib
