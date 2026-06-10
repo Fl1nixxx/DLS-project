@@ -226,16 +226,16 @@ def main():
         st.code(WEIGHTS_PATH)
 
         st.write("Поддерживаемые форматы:")
-        st.code(".tif, .tiff, .png, .jpg, .jpeg")
+        st.code(".tif, .tiff")
 
     st.subheader("Загрузка изображения")
 
     uploaded_file = st.file_uploader(
         "Выбери изображение",
-        type=["tif", "tiff", "png", "jpg", "jpeg"],)
+        type=["tif", "tiff"],)
 
     if uploaded_file is None:
-        st.info("Загрузи изображение в формате `.tif`, `.tiff`, `.png`, `.jpg` или `.jpeg`.")
+        st.info("Загрузи изображение в формате `.tif`, `.tiff`)
         return
 
     try:
