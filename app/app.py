@@ -160,7 +160,7 @@ def count_building_area(image, mask, pixel_area, noise_threshold=7):
     else:
         binary_mask = (binary_mask > 127).astype(np.uint8) * 255
     
-    contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(binary_mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
 
     building_idx = 0
     buildings_report = []
@@ -210,7 +210,7 @@ def main():
 
     st.title("Image Segmentation App")
     st.write(
-        "Загрузи изображение в формате `.tif`, `.tiff`, `.png`, `.jpg` или `.jpeg`. "
+        "Загрузи изображение в формате `.tif`, `.tiff`"
         "Приложение построит сегментационную маску и наложит её поверх изображения.")
 
     with st.sidebar:
