@@ -168,7 +168,7 @@ def count_building_area(image, mask, pixel_area, noise_threshold=7):
         pixel_count = cv2.contourArea(cnt)
         area_sqm = pixel_count * pixel_area
 
-        if area_sqm < noise_threshold_sqm:
+        if area_sqm < noise_threshold:
             continue
 
         building_idx += 1
