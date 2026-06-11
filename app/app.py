@@ -235,7 +235,7 @@ def main():
         type=["tif", "tiff"],)
 
     if uploaded_file is None:
-        st.info("Загрузи изображение в формате `.tif`, `.tiff`)
+        st.info("Загрузи изображение в формате `.tif`, `.tiff`")
         return
 
     try:
