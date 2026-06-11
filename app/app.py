@@ -144,11 +144,9 @@ def image_to_png_bytes(image):
     return buffer.getvalue()
 
 def count_building_area(image, mask, pixel_area, noise_threshold=7):
-
     FONT_SIZE = 3.0
     THICKNESS = 8
     PADDING = 25
-
     TEXT_COLOR = (255, 255, 255)
     BG_COLOR = (0, 0, 0)
 
@@ -160,13 +158,16 @@ def count_building_area(image, mask, pixel_area, noise_threshold=7):
     else:
         binary_mask = (binary_mask > 127).astype(np.uint8) * 255
     
-    contours, _ = cv2.findContours(binary_mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    binary_mask = cv2.morphologyEx(binary_mask, cv2.MORPH_OPEN, kernel)
+    
+    num_labels, labels_im, stats, centroids = cv2.connectedComponentsWithStats(binary_mask)
 
     building_idx = 0
     buildings_report = []
-
-    for cnt in contours:
-        pixel_count = cv2.contourArea(cnt)
+    
+    for i in range(1, num_labels):
+        pixel_count = stats[i, cv2.CC_STAT_AREA]
         area_sqm = pixel_count * pixel_area
 
         if area_sqm < noise_threshold:
@@ -176,12 +177,22 @@ def count_building_area(image, mask, pixel_area, noise_threshold=7):
         area_rounded = round(area_sqm, 2)
         buildings_report.append((building_idx, area_rounded))
 
+        component_mask = (labels_im == i).astype(np.uint8) * 255
+        cnts, _ = cv2.findContours(component_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        if len(cnts) == 0:
+            continue
+        cnt = cnts[0]
+
         cv2.drawContours(result_img, [cnt], -1, (0, 255, 0), 3)
 
-        x, y, w, h = cv2.boundingRect(cnt)
+        # Берем координаты рамки
+        x = stats[i, cv2.CC_STAT_LEFT]
+        y = stats[i, cv2.CC_STAT_TOP]
+        w = stats[i, cv2.CC_STAT_WIDTH]
+        h = stats[i, cv2.CC_STAT_HEIGHT]
 
         text = f"ID {building_idx}: {area_rounded} m2"
-
         (text_width, text_height), baseline = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, FONT_SIZE, THICKNESS)
 
         text_x = int(x + w / 2) - int(text_width / 2)
@@ -193,10 +204,8 @@ def count_building_area(image, mask, pixel_area, noise_threshold=7):
         box_y2 = text_y + baseline + PADDING
 
         cv2.rectangle(result_img, (box_x1, box_y1), (box_x2, box_y2), BG_COLOR, -1)
-
         cv2.rectangle(result_img, (box_x1, box_y1), (box_x2, box_y2), (255, 255, 255), 4)
-
-        cv2.putText(result_img,text,(text_x, text_y),cv2.FONT_HERSHEY_SIMPLEX,FONT_SIZE,TEXT_COLOR,THICKNESS,cv2.LINE_AA)
+        cv2.putText(result_img, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, FONT_SIZE, TEXT_COLOR, THICKNESS, cv2.LINE_AA)
     
     return result_img
 
