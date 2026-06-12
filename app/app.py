@@ -41,7 +41,7 @@ def load_segmentation_model():
     download_weights()
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = build_model(in_channels=3, out_channels=1).to(device)
+    model = build_model(1, True).to(device)
     
     checkpoint = torch.load(WEIGHTS_PATH, map_location=device)
     state_dict = checkpoint.get("state_dict", checkpoint) if isinstance(checkpoint, dict) else checkpoint
