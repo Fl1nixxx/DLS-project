@@ -16,6 +16,7 @@ import streamlit as st
 from PIL import Image, ImageSequence
 import cv2
 import torch
+import torch.nn as nn
 from torchvision import transforms
 
 from model import build_model
