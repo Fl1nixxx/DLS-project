@@ -91,3 +91,6 @@ class FLnet(nn.Module):
             return [self.final1(x0_1), self.final2(x0_2), self.final3(x0_3), self.final4(x0_4)]
         else:
             return self.final4(x0_4) if self.deep_supervision else self.last_layer(x0_4)
+
+def build_model(out_channels=1, deep_supervision=True):
+    return FLnet(1, True)
