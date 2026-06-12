@@ -226,12 +226,6 @@ def main():
 
         st.divider()
 
-        st.write("Размер входа модели:")
-        st.code(f"{IMAGE_SIZE} x {IMAGE_SIZE}")
-
-        st.write("Файл весов:")
-        st.code(WEIGHTS_PATH)
-
         st.write("Поддерживаемые форматы:")
         st.code(".tif, .tiff")
 
