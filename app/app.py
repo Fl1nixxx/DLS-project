@@ -95,20 +95,25 @@ def predict_mask(model, device, image, threshold):
     original_size = image.size
 
     x = preprocess_image(image).to(device)
+    model.eval()
 
     with torch.no_grad():
         logits = model(x)
+        
+        if isinstance(logits, list):
+            logits = logits[-1]
+            
+        logits = nn.functional.interpolate(logits, size=x.shape[2:], mode='bilinear', align_corners=False)
+        
         probs = torch.sigmoid(logits)
         mask = (probs > threshold).float()
 
     mask_np = mask.squeeze().detach().cpu().numpy()
-
     mask_img = Image.fromarray((mask_np * 255).astype(np.uint8))
     mask_img = mask_img.resize(original_size, resample=Image.NEAREST)
+    final_mask_np = np.array(mask_img).astype(np.float32) / 255.0
 
-    mask_np = np.array(mask_img).astype(np.float32) / 255.0
-
-    return mask_np
+    return final_mask_np
 
 def make_overlay(image, mask, alpha):
     image_np = np.array(image).astype(np.float32)
