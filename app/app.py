@@ -300,7 +300,8 @@ def main():
             st.warning("Не удалось рассчитать гео-координаты. Возможно, файл не содержит метаданных (не GeoTIFF).")
             st.exception(e)
             return
-            
+
+        area_map = Image.fromarray(area_map)
         st.download_button(label="Скачать areas PNG",data=image_to_png_bytes(area_map),file_name="area.png",mime="image/png",)
 
 if __name__ == "__main__":
