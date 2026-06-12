@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchvision import models
 
 def upsample_like(x, target):
     return F.interpolate(x,size=target.shape[2:],mode="bilinear",align_corners=True)
