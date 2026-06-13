@@ -144,21 +144,6 @@ def make_mask_image(mask):
     return mask_img
 
 
-def to_optimized_jpeg(pil_img, max_size=(1280, 720)):
-    img_copy = pil_img.copy()
-    img_copy.thumbnail(max_size)
-    if img_copy.mode != "RGB":
-        img_copy = img_copy.convert("RGB")
-    buf = io.BytesIO()
-    img_copy.save(buf, format="JPEG", quality=80)
-    buf.seek(0)
-    return buf
-
-def convert_to_png(pil_img):
-    buf = io.BytesIO()
-    pil_img.save(buf, format="PNG", optimize=True, compress_level=6)
-    return buf.getvalue()
-
 def count_building_area(image, mask, pixel_area, noise_threshold=7):
     FONT_SIZE = 3.0
     THICKNESS = 8
@@ -214,30 +199,23 @@ def count_building_area(image, mask, pixel_area, noise_threshold=7):
     
     return result_img
 
-@st.fragment
-def render_results():
-    col1, col2, col3 = st.columns(3)
+@st.cache_data
+def convert_to_png_cached(pil_img):
+    buf = io.BytesIO()
+    pil_img.save(buf, format="PNG", optimize=True, compress_level=3)
+    return buf.getvalue()
 
-    with col1:
-        st.subheader("Original")
-        st.image(st.session_state["orig_disp"], width="stretch")
 
-    with col2:
-        st.subheader("Mask")
-        st.image(st.session_state["mask_disp"], width="stretch")
-
-    with col3:
-        st.subheader("Overlay")
-        st.image(st.session_state["overlay_disp"], width="stretch")
-
-    st.download_button(label="Скачать overlay PNG",data=st.session_state["overlay_bytes"],file_name="overlay.png",mime="image/png",)
-
-    st.download_button(label="Скачать mask PNG",data=st.session_state["mask_bytes"],file_name="mask.png",mime="image/png",)
-
-    st.subheader("Building area")
-    st.image(st.session_state["area_disp"], width="stretch")
-
-    st.download_button(label="Скачать areas PNG",data=st.session_state["area_bytes"],file_name="area.png",mime="image/png",)
+@st.cache_data
+def to_optimized_jpeg_cached(pil_img, max_size=(1280, 720)):
+    img_copy = pil_img.copy()
+    img_copy.thumbnail(max_size)
+    if img_copy.mode != "RGB":
+        img_copy = img_copy.convert("RGB")
+    buf = io.BytesIO()
+    img_copy.save(buf, format="JPEG", quality=80)
+    buf.seek(0)
+    return buf
 
 
 def main():
@@ -251,15 +229,13 @@ def main():
     with st.sidebar:
         st.header("Настройки")
         threshold = st.slider("Порог сегментации",min_value=0.0,max_value=1.0,value=0.5,step=0.05,)
-        alpha = st.slider("Прозрачность маски",min_value=0.0, max_value=1.0,value=0.45, step=0.05,)
+        alpha = st.slider("Прозрачность маски",min_value=0.0,max_value=1.0,value=0.45,step=0.05,)
 
     st.subheader("Загрузка изображения")
     uploaded_file = st.file_uploader("Выбери изображение", type=["tif", "tiff"])
 
     if uploaded_file is None:
         st.info("Загрузи изображение в формате `.tif`, `.tiff`")
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
         return
 
     try:
@@ -269,7 +245,7 @@ def main():
         st.exception(e)
         return
 
-    st.success(f"Файл загружен: `{uploaded_file.name}`. Размер: {image.size} x {image.size}")
+    st.success(f"Файл загружен: `{uploaded_file.name}`. Размер: {image.size[0]} x {image.size[1]}")
 
     try:
         model, device = load_segmentation_model()
@@ -278,8 +254,13 @@ def main():
         st.exception(e)
         return
 
-    if st.button("Запустить сегментацию"):
-        with st.spinner("Модель строит маску..."):
+    if "clicked" not in st.session_state:
+        st.session_state.clicked = False
+
+    if st.button("Запустить сегментацию") or st.session_state.clicked:
+        st.session_state.clicked = True
+
+        with st.spinner("Обработка изображений..."):
             try:
                 mask = predict_mask(model=model,device=device,image=image,threshold=threshold,)
                 mask_image = make_mask_image(mask)
@@ -289,24 +270,33 @@ def main():
                 area_map_raw = count_building_area(image, mask, pixel_area, noise_threshold=10)
                 area_map = Image.fromarray(area_map_raw)
 
-                st.session_state["overlay_bytes"] = convert_to_png(overlay)
-                st.session_state["mask_bytes"] = convert_to_png(mask_image)
-                st.session_state["area_bytes"] = convert_to_png(area_map)
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.subheader("Original")
+                    st.image(to_optimized_jpeg_cached(image),use_container_width=True,)
+                    
+                with col2:
+                    st.subheader("Mask")
+                    st.image(to_optimized_jpeg_cached(mask_image),use_container_width=True,)
+                    
+                with col3:
+                    st.subheader("Overlay")
+                    st.image(to_optimized_jpeg_cached(overlay),use_container_width=True,)
 
-                st.session_state["orig_disp"] = to_optimized_jpeg(image)
-                st.session_state["mask_disp"] = to_optimized_jpeg(mask_image)
-                st.session_state["overlay_disp"] = to_optimized_jpeg(overlay)
-                st.session_state["area_disp"] = to_optimized_jpeg(area_map)
+                st.download_button(label="Скачать overlay PNG",data=convert_to_png_cached(overlay),file_name="overlay.png",mime="image/png",)
 
-                st.session_state["results_ready"] = True
+                st.download_button(label="Скачать mask PNG",data=convert_to_png_cached(mask_image),file_name="mask.png", mime="image/png",)
+
+                st.subheader("Building area")
+                st.image(to_optimized_jpeg_cached(area_map), use_container_width=True)
+
+                st.download_button(label="Скачать areas PNG",data=convert_to_png_cached(area_map),file_name="area.png",mime="image/png",)
 
             except Exception as e:
-                st.error("Ошибка во время предсказания.")
+                st.error("Ошибка во время выполнения алгоритма.")
                 st.exception(e)
+                st.session_state.clicked = False
                 return
-
-    if st.session_state.get("results_ready"):
-        render_results()
 
 
 if __name__ == "__main__":
