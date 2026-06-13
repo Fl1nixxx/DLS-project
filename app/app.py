@@ -292,7 +292,7 @@ def main():
         
         try:
             pixel_area = define_pixel_area(uploaded_file)
-            area_map = count_building_area(image, mask, pixel_area, noise_threshold=7)
+            area_map = count_building_area(image, mask, pixel_area, noise_threshold=10)
 
             st.subheader("Building area")
             st.image(area_map, use_container_width=True)
