@@ -1,7 +1,6 @@
 import io
 import os
 import sys
-import zipfile
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -200,30 +199,11 @@ def count_building_area(image, mask, pixel_area, noise_threshold=7):
     
     return result_img
 
-
-def to_screen_jpeg(pil_img):
-    img_copy = pil_img.copy()
-    img_copy.thumbnail((1280, 720))
-    if img_copy.mode != "RGB":
-        img_copy = img_copy.convert("RGB")
-    buf = io.BytesIO()
-    img_copy.save(buf, format="JPEG", quality=80)
-    buf.seek(0)
-    return buf
-
-
-def image_to_zip_bytes(pil_img, filename_inside_zip):
-    img_buf = io.BytesIO()
-    pil_img.save(img_buf, format="PNG")
-    img_buf.seek(0)
-    
-    zip_buf = io.BytesIO()
-    with zipfile.ZipFile(
-        zip_buf, "w", zipfile.ZIP_DEFLATED, compresslevel=9
-    ) as zip_file:
-        zip_file.writestr(filename_inside_zip, img_buf.getvalue())
-
-    return zip_buf.getvalue()
+def image_to_png_bytes(image):
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+    return buffer.getvalue()
 
 
 def main():
@@ -237,6 +217,7 @@ def main():
 
     with st.sidebar:
         st.header("Настройки")
+
         threshold = st.slider(
             "Порог сегментации",
             min_value=0.0,
@@ -244,6 +225,7 @@ def main():
             value=0.5,
             step=0.05,
         )
+
         alpha = st.slider(
             "Прозрачность маски",
             min_value=0.0,
@@ -251,11 +233,14 @@ def main():
             value=0.45,
             step=0.05,
         )
+
         st.divider()
+
         st.write("Поддерживаемые форматы:")
         st.code(".tif, .tiff")
 
     st.subheader("Загрузка изображения")
+
     uploaded_file = st.file_uploader(
         "Выбери изображение",
         type=["tif", "tiff"],
@@ -274,7 +259,7 @@ def main():
 
     st.success(
         f"Файл загружен: `{uploaded_file.name}`. "
-        f"Размер изображения: {image.size} x {image.size}"
+        f"Размер изображения: {image.size[0]} x {image.size[1]}"
     )
 
     try:
@@ -293,8 +278,15 @@ def main():
                     image=image,
                     threshold=threshold,
                 )
+
                 mask_image = make_mask_image(mask)
-                overlay = make_overlay(image=image, mask=mask, alpha=alpha)
+
+                overlay = make_overlay(
+                    image=image,
+                    mask=mask,
+                    alpha=alpha,
+                )
+
             except Exception as e:
                 st.error("Ошибка во время предсказания.")
                 st.exception(e)
@@ -304,52 +296,52 @@ def main():
 
         with col1:
             st.subheader("Original")
-            st.image(to_screen_jpeg(image), use_container_width=True)
+            st.image(image.convert("RGB"), use_container_width=True)
 
         with col2:
             st.subheader("Mask")
-            st.image(to_screen_jpeg(mask_image), use_container_width=True)
+            st.image(mask_image.convert("RGB"), use_container_width=True)
 
         with col3:
             st.subheader("Overlay")
-            st.image(to_screen_jpeg(overlay), use_container_width=True)
+            st.image(overlay.convert("RGB"), use_container_width=True)
 
         st.download_button(
-            label="📦 Скачать overlay (ZIP)",
-            data=image_to_zip_bytes(overlay, "overlay.png"),
-            file_name="overlay.zip",
-            mime="application/zip",
+            label="Скачать overlay PNG",
+            data=image_to_png_bytes(overlay),
+            file_name="overlay.png",
+            mime="image/png",
         )
 
         st.download_button(
-            label="📦 Скачать mask (ZIP)",
-            data=image_to_zip_bytes(mask_image, "mask.png"),
-            file_name="mask.zip",
-            mime="application/zip",
+            label="Скачать mask PNG",
+            data=image_to_png_bytes(mask_image),
+            file_name="mask.png",
+            mime="image/png",
         )
 
         try:
             pixel_area = define_pixel_area(uploaded_file)
-            area_map_raw = count_building_area(
+            area_map = count_building_area(
                 image, mask, pixel_area, noise_threshold=10
             )
 
             st.subheader("Building area")
-            area_map = Image.fromarray(area_map_raw)
-            st.image(to_screen_jpeg(area_map), use_container_width=True)
-
-            st.download_button(
-                label="📦 Скачать areas (ZIP)",
-                data=image_to_zip_bytes(area_map, "area.png"),
-                file_name="area.zip",
-                mime="application/zip",
-            )
+            st.image(area_map, use_container_width=True)
         except Exception as e:
             st.warning(
                 "Не удалось рассчитать гео-координаты. Возможно, файл не содержит метаданных (не GeoTIFF)."
             )
             st.exception(e)
             return
+
+        area_map = Image.fromarray(area_map)
+        st.download_button(
+            label="Скачать areas PNG",
+            data=image_to_png_bytes(area_map),
+            file_name="area.png",
+            mime="image/png",
+        )
 
 
 if __name__ == "__main__":
