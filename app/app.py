@@ -1,6 +1,7 @@
 import io
 import os
 import sys
+import zipfile
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -200,10 +201,6 @@ def count_building_area(image, mask, pixel_area, noise_threshold=7):
     return result_img
 
 
-STATIC_DIR = "static"
-if not os.path.exists(STATIC_DIR):
-    os.makedirs(STATIC_DIR)
-
 def to_screen_jpeg(pil_img):
     img_copy = pil_img.copy()
     img_copy.thumbnail((1280, 720))
@@ -213,6 +210,20 @@ def to_screen_jpeg(pil_img):
     img_copy.save(buf, format="JPEG", quality=80)
     buf.seek(0)
     return buf
+
+
+def image_to_zip_bytes(pil_img, filename_inside_zip):
+    img_buf = io.BytesIO()
+    pil_img.save(img_buf, format="PNG")
+    img_buf.seek(0)
+    
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(
+        zip_buf, "w", zipfile.ZIP_DEFLATED, compresslevel=9
+    ) as zip_file:
+        zip_file.writestr(filename_inside_zip, img_buf.getvalue())
+
+    return zip_buf.getvalue()
 
 
 def main():
@@ -226,7 +237,6 @@ def main():
 
     with st.sidebar:
         st.header("Настройки")
-
         threshold = st.slider(
             "Порог сегментации",
             min_value=0.0,
@@ -234,7 +244,6 @@ def main():
             value=0.5,
             step=0.05,
         )
-
         alpha = st.slider(
             "Прозрачность маски",
             min_value=0.0,
@@ -242,14 +251,11 @@ def main():
             value=0.45,
             step=0.05,
         )
-
         st.divider()
-
         st.write("Поддерживаемые форматы:")
         st.code(".tif, .tiff")
 
     st.subheader("Загрузка изображения")
-
     uploaded_file = st.file_uploader(
         "Выбери изображение",
         type=["tif", "tiff"],
@@ -268,7 +274,7 @@ def main():
 
     st.success(
         f"Файл загружен: `{uploaded_file.name}`. "
-        f"Размер изображения: {image.size[0]} x {image.size[1]}"
+        f"Размер изображения: {image.size} x {image.size}"
     )
 
     try:
@@ -287,25 +293,12 @@ def main():
                     image=image,
                     threshold=threshold,
                 )
-
                 mask_image = make_mask_image(mask)
-
-                overlay = make_overlay(
-                    image=image,
-                    mask=mask,
-                    alpha=alpha,
-                )
-
+                overlay = make_overlay(image=image, mask=mask, alpha=alpha)
             except Exception as e:
                 st.error("Ошибка во время предсказания.")
                 st.exception(e)
                 return
-
-        # Сохраняем оригиналы картинок на диск сервера в папку static
-        overlay_path = os.path.join(STATIC_DIR, "overlay.png")
-        mask_path = os.path.join(STATIC_DIR, "mask.png")
-        overlay.save(overlay_path, format="PNG")
-        mask_image.save(mask_path, format="PNG")
 
         col1, col2, col3 = st.columns(3)
 
@@ -321,15 +314,18 @@ def main():
             st.subheader("Overlay")
             st.image(to_screen_jpeg(overlay), use_container_width=True)
 
-        # HTML-кнопки для прямого скачивания без участия буфера Streamlit
-        st.markdown(
-            """
-            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-                <a href="app/static/overlay.png" download="overlay.png" style="text-decoration:none; padding:10px 20px; background-color:#262730; color:white; border-radius:5px; border:1px solid #464855; font-size:14px; font-weight:500;">📥 Скачать overlay PNG</a>
-                <a href="app/static/mask.png" download="mask.png" style="text-decoration:none; padding:10px 20px; background-color:#262730; color:white; border-radius:5px; border:1px solid #464855; font-size:14px; font-weight:500;">📥 Скачать mask PNG</a>
-            </div>
-            """,
-            unsafe_allow_html=True,
+        st.download_button(
+            label="📦 Скачать overlay (ZIP)",
+            data=image_to_zip_bytes(overlay, "overlay.png"),
+            file_name="overlay.zip",
+            mime="application/zip",
+        )
+
+        st.download_button(
+            label="📦 Скачать mask (ZIP)",
+            data=image_to_zip_bytes(mask_image, "mask.png"),
+            file_name="mask.zip",
+            mime="application/zip",
         )
 
         try:
@@ -342,19 +338,12 @@ def main():
             area_map = Image.fromarray(area_map_raw)
             st.image(to_screen_jpeg(area_map), use_container_width=True)
 
-            # Сохраняем третью картинку на диск
-            area_path = os.path.join(STATIC_DIR, "area.png")
-            area_map.save(area_path, format="PNG")
-
-            st.markdown(
-                """
-                <div style="margin-top: 10px;">
-                    <a href="app/static/area.png" download="area.png" style="text-decoration:none; padding:10px 20px; background-color:#262730; color:white; border-radius:5px; border:1px solid #464855; font-size:14px; font-weight:500;">📥 Скачать areas PNG</a>
-                </div>
-                """,
-                unsafe_allow_html=True,
+            st.download_button(
+                label="📦 Скачать areas (ZIP)",
+                data=image_to_zip_bytes(area_map, "area.png"),
+                file_name="area.zip",
+                mime="application/zip",
             )
-
         except Exception as e:
             st.warning(
                 "Не удалось рассчитать гео-координаты. Возможно, файл не содержит метаданных (не GeoTIFF)."
