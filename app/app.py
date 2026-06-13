@@ -146,7 +146,7 @@ def make_mask_image(mask):
 
 def image_to_png_bytes(image):
     buffer = io.BytesIO()
-    image.save(buffer, format="PNG")
+    image.save(buffer, format="PNG", optimize=True, compress_level=9)
     buffer.seek(0)
     return buffer.getvalue()
 
