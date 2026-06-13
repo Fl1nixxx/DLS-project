@@ -206,6 +206,11 @@ def image_to_png_bytes(image):
     return buffer.getvalue()
 
 
+@st.cache_data(show_spinner=False)
+def cached_read_image(file_buffer):
+    return read_image(file_buffer)
+
+
 def main():
     st.set_page_config(page_title="Image Segmentation App", layout="wide")
 
@@ -215,19 +220,24 @@ def main():
         "Приложение построит сегментационную маску и наложит её поверх изображения."
     )
 
-    # Инициализация сессии для хранения результатов (защита от перезапусков страницы)
-    if "segmentation_done" not in st.session_state:
-        st.session_state.segmentation_done = False
+    # Стабильная инициализация переменных в сессии
+    if "mask_image" not in st.session_state:
         st.session_state.mask_image = None
+    if "overlay" not in st.session_state:
         st.session_state.overlay = None
+    if "area_map" not in st.session_state:
         st.session_state.area_map = None
+    if "overlay_bytes" not in st.session_state:
         st.session_state.overlay_bytes = None
+    if "mask_bytes" not in st.session_state:
         st.session_state.mask_bytes = None
+    if "area_bytes" not in st.session_state:
         st.session_state.area_bytes = None
+    if "last_processed_file" not in st.session_state:
+        st.session_state.last_processed_file = None
 
     with st.sidebar:
         st.header("Настройки")
-
         threshold = st.slider(
             "Порог сегментации",
             min_value=0.0,
@@ -235,7 +245,6 @@ def main():
             value=0.5,
             step=0.05,
         )
-
         alpha = st.slider(
             "Прозрачность маски",
             min_value=0.0,
@@ -243,26 +252,32 @@ def main():
             value=0.45,
             step=0.05,
         )
-
         st.divider()
         st.write("Поддерживаемые форматы:")
         st.code(".tif, .tiff")
 
     st.subheader("Загрузка изображения")
-
-    uploaded_file = st.file_uploader(
-        "Выбери изображение",
-        type=["tif", "tiff"],
-    )
+    uploaded_file = st.file_uploader("Выбери изображение", type=["tif", "tiff"])
 
     if uploaded_file is None:
         st.info("Загрузи изображение в формате `.tif`, `.tiff`")
-        # Сбрасываем состояние, если пользователь удалил файл
-        st.session_state.segmentation_done = False
+        # Если файл удален — чистим старую сессию
+        st.session_state.last_processed_file = None
+        st.session_state.mask_image = None
         return
 
+    # Защита от багов смены файлов: если загрузили НОВЫЙ файл, стираем старые маски
+    if st.session_state.last_processed_file != uploaded_file.name:
+        st.session_state.mask_image = None
+        st.session_state.overlay = None
+        st.session_state.area_map = None
+        st.session_state.overlay_bytes = None
+        st.session_state.mask_bytes = None
+        st.session_state.area_bytes = None
+
     try:
-        image = read_image(uploaded_file)
+        # Используем кэшированную функцию, чтобы не терять дескриптор файла
+        image = cached_read_image(uploaded_file)
     except Exception as e:
         st.error("Не получилось открыть изображение.")
         st.exception(e)
@@ -280,40 +295,33 @@ def main():
         st.exception(e)
         return
 
-    # Кнопка запуска сегментации
+    # Запуск сегментации
     if st.button("Запустить сегментацию"):
         with st.spinner("Модель строит маску..."):
             try:
-                # 1. Считаем маску и оверлей
                 mask = predict_mask(
                     model=model,
                     device=device,
                     image=image,
                     threshold=threshold,
                 )
-                mask_image_obj = make_mask_image(mask)
-                overlay_obj = make_overlay(
-                    image=image,
-                    mask=mask,
-                    alpha=alpha,
-                )
+                
+                # Сохраняем объекты изображений
+                st.session_state.mask_image = make_mask_image(mask)
+                st.session_state.overlay = make_overlay(image=image, mask=mask, alpha=alpha)
 
-                # 2. Сразу сохраняем картинки и их ГОТОВЫЕ байты в сессию
-                st.session_state.mask_image = mask_image_obj
-                st.session_state.overlay = overlay_obj
-                st.session_state.mask_bytes = image_to_png_bytes(mask_image_obj)
-                st.session_state.overlay_bytes = image_to_png_bytes(overlay_obj)
+                # Генерируем байты один раз в память
+                st.session_state.mask_bytes = image_to_png_bytes(st.session_state.mask_image)
+                st.session_state.overlay_bytes = image_to_png_bytes(st.session_state.overlay)
 
-                # 3. Расчет гео-координат и площади
+                # Гео-данные и площади
                 try:
                     pixel_area = define_pixel_area(uploaded_file)
                     area_map_np = count_building_area(
                         image, mask, pixel_area, noise_threshold=10
                     )
-                    area_map_obj = Image.fromarray(area_map_np)
-                    
-                    st.session_state.area_map = area_map_obj
-                    st.session_state.area_bytes = image_to_png_bytes(area_map_obj)
+                    st.session_state.area_map = Image.fromarray(area_map_np)
+                    st.session_state.area_bytes = image_to_png_bytes(st.session_state.area_map)
                 except Exception as e:
                     st.warning(
                         "Не удалось рассчитать гео-координаты. Возможно, файл не содержит метаданных (не GeoTIFF)."
@@ -322,17 +330,16 @@ def main():
                     st.session_state.area_map = None
                     st.session_state.area_bytes = None
 
-                # Фиксируем успешное завершение
-                st.session_state.segmentation_done = True
+                # Запоминаем имя файла, чтобы сессия не сбрасывалась
+                st.session_state.last_processed_file = uploaded_file.name
 
             except Exception as e:
                 st.error("Ошибка во время предсказания.")
                 st.exception(e)
-                st.session_state.segmentation_done = False
                 return
 
-    # Отрисовка интерфейса результатов (срабатывает и после нажатия кнопок скачивания)
-    if st.session_state.segmentation_done:
+    # Отрисовка интерфейса и скачивание (работает автономно от кнопки сегментации)
+    if st.session_state.mask_image is not None:
         st.divider()
         col1, col2, col3 = st.columns(3)
 
@@ -348,12 +355,13 @@ def main():
             st.subheader("Overlay")
             st.image(st.session_state.overlay.convert("RGB"), use_container_width=True)
 
-        # Кнопки используют заранее сгенерированные байты из памяти
+        # Скачивание статических байтов напрямую без побочных эффектов
         st.download_button(
             label="Скачать overlay PNG",
             data=st.session_state.overlay_bytes,
             file_name="overlay.png",
             mime="image/png",
+            key="download_overlay_btn"
         )
 
         st.download_button(
@@ -361,9 +369,9 @@ def main():
             data=st.session_state.mask_bytes,
             file_name="mask.png",
             mime="image/png",
+            key="download_mask_btn"
         )
 
-        # Выводим карту площадей, если она успешно создалась
         if st.session_state.area_map is not None:
             st.subheader("Building area")
             st.image(st.session_state.area_map, use_container_width=True)
@@ -373,6 +381,7 @@ def main():
                 data=st.session_state.area_bytes,
                 file_name="area.png",
                 mime="image/png",
+                key="download_area_btn"
             )
 
 
