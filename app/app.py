@@ -214,7 +214,30 @@ def count_building_area(image, mask, pixel_area, noise_threshold=7):
     
     return result_img
 
+@st.fragment
+def render_results():
+    col1, col2, col3 = st.columns(3)
 
+    with col1:
+        st.subheader("Original")
+        st.image(st.session_state["orig_disp"], width="stretch")
+
+    with col2:
+        st.subheader("Mask")
+        st.image(st.session_state["mask_disp"], width="stretch")
+
+    with col3:
+        st.subheader("Overlay")
+        st.image(st.session_state["overlay_disp"], width="stretch")
+
+    st.download_button(label="Скачать overlay PNG",data=st.session_state["overlay_bytes"],file_name="overlay.png",mime="image/png",)
+
+    st.download_button(label="Скачать mask PNG",data=st.session_state["mask_bytes"],file_name="mask.png",mime="image/png",)
+
+    st.subheader("Building area")
+    st.image(st.session_state["area_disp"], width="stretch")
+
+    st.download_button(label="Скачать areas PNG",data=st.session_state["area_bytes"],file_name="area.png",mime="image/png",)
 
 
 def main():
@@ -227,11 +250,11 @@ def main():
 
     with st.sidebar:
         st.header("Настройки")
-        threshold = st.slider("Порог сегментации",min_value=0.0,max_value=1.0,value=0.5,step=0.05)
-        alpha = st.slider("Прозрачность маски",min_value=0.0,max_value=1.0,value=0.45, step=0.05)
+        threshold = st.slider("Порог сегментации",min_value=0.0,max_value=1.0,value=0.5,step=0.05,)
+        alpha = st.slider("Прозрачность маски",min_value=0.0, max_value=1.0,value=0.45, step=0.05,)
 
     st.subheader("Загрузка изображения")
-    uploaded_file = st.file_uploader("Выбери изображение",type=["tif", "tiff"])
+    uploaded_file = st.file_uploader("Выбери изображение", type=["tif", "tiff"])
 
     if uploaded_file is None:
         st.info("Загрузи изображение в формате `.tif`, `.tiff`")
@@ -246,7 +269,7 @@ def main():
         st.exception(e)
         return
 
-    st.success(f"Файл загружен: `{uploaded_file.name}`. Размер: {image.size[0]} x {image.size[1]}")
+    st.success(f"Файл загружен: `{uploaded_file.name}`. Размер: {image.size} x {image.size}")
 
     try:
         model, device = load_segmentation_model()
@@ -258,7 +281,7 @@ def main():
     if st.button("Запустить сегментацию"):
         with st.spinner("Модель строит маску..."):
             try:
-                mask = predict_mask(model=model,device=device,image=image,threshold=threshold)
+                mask = predict_mask(model=model,device=device,image=image,threshold=threshold,)
                 mask_image = make_mask_image(mask)
                 overlay = make_overlay(image=image, mask=mask, alpha=alpha)
 
@@ -266,9 +289,9 @@ def main():
                 area_map_raw = count_building_area(image, mask, pixel_area, noise_threshold=10)
                 area_map = Image.fromarray(area_map_raw)
 
-                st.session_state["raw_overlay"] = overlay
-                st.session_state["raw_mask"] = mask_image
-                st.session_state["raw_area"] = area_map
+                st.session_state["overlay_bytes"] = convert_to_png(overlay)
+                st.session_state["mask_bytes"] = convert_to_png(mask_image)
+                st.session_state["area_bytes"] = convert_to_png(area_map)
 
                 st.session_state["orig_disp"] = to_optimized_jpeg(image)
                 st.session_state["mask_disp"] = to_optimized_jpeg(mask_image)
@@ -283,28 +306,8 @@ def main():
                 return
 
     if st.session_state.get("results_ready"):
-        col1, col2, col3 = st.columns(3)
+        render_results()
 
-        with col1:
-            st.subheader("Original")
-            st.image(st.session_state["orig_disp"], use_container_width=True)
-
-        with col2:
-            st.subheader("Mask")
-            st.image(st.session_state["mask_disp"], use_container_width=True)
-
-        with col3:
-            st.subheader("Overlay")
-            st.image(st.session_state["overlay_disp"], use_container_width=True)
-
-        st.download_button(label="Скачать overlay PNG",data=lambda: convert_to_png(st.session_state["raw_overlay"]),file_name="overlay.png",mime="image/png")
-
-        st.download_button(label="Скачать mask PNG",data=lambda: convert_to_png(st.session_state["raw_mask"]),file_name="mask.png",mime="image/png")
-
-        st.subheader("Building area")
-        st.image(st.session_state["area_disp"], use_container_width=True)
-
-        st.download_button(label="Скачать areas PNG", data=lambda: convert_to_png(st.session_state["raw_area"]),file_name="area.png",mime="image/png")
 
 if __name__ == "__main__":
     main()
