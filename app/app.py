@@ -199,17 +199,14 @@ def count_building_area(image, mask, pixel_area, noise_threshold=7):
     
     return result_img
 
-@st.cache_data
-def convert_to_png_cached(pil_img):
-    buf = io.BytesIO()
-    pil_img.save(buf, format="PNG", optimize=True, compress_level=3)
-    return buf.getvalue()
 
+STATIC_DIR = "static"
+if not os.path.exists(STATIC_DIR):
+    os.makedirs(STATIC_DIR)
 
-@st.cache_data
-def to_optimized_jpeg_cached(pil_img, max_size=(1280, 720)):
+def to_screen_jpeg(pil_img):
     img_copy = pil_img.copy()
-    img_copy.thumbnail(max_size)
+    img_copy.thumbnail((1280, 720))
     if img_copy.mode != "RGB":
         img_copy = img_copy.convert("RGB")
     buf = io.BytesIO()
@@ -223,16 +220,40 @@ def main():
 
     st.title("Image Segmentation App")
     st.write(
-        "Загрузи изображение в формате `.tif`, `.tiff`. "
-        "Приложение построит сегментационную маску и наложит её поверх изображения.")
+        "Загрузи изображение в формате `.tif`, `.tiff` "
+        "Приложение построит сегментационную маску и наложит её поверх изображения."
+    )
 
     with st.sidebar:
         st.header("Настройки")
-        threshold = st.slider("Порог сегментации",min_value=0.0,max_value=1.0,value=0.5,step=0.05,)
-        alpha = st.slider("Прозрачность маски",min_value=0.0,max_value=1.0,value=0.45,step=0.05,)
+
+        threshold = st.slider(
+            "Порог сегментации",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.5,
+            step=0.05,
+        )
+
+        alpha = st.slider(
+            "Прозрачность маски",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.45,
+            step=0.05,
+        )
+
+        st.divider()
+
+        st.write("Поддерживаемые форматы:")
+        st.code(".tif, .tiff")
 
     st.subheader("Загрузка изображения")
-    uploaded_file = st.file_uploader("Выбери изображение", type=["tif", "tiff"])
+
+    uploaded_file = st.file_uploader(
+        "Выбери изображение",
+        type=["tif", "tiff"],
+    )
 
     if uploaded_file is None:
         st.info("Загрузи изображение в формате `.tif`, `.tiff`")
@@ -245,7 +266,10 @@ def main():
         st.exception(e)
         return
 
-    st.success(f"Файл загружен: `{uploaded_file.name}`. Размер: {image.size[0]} x {image.size[1]}")
+    st.success(
+        f"Файл загружен: `{uploaded_file.name}`. "
+        f"Размер изображения: {image.size[0]} x {image.size[1]}"
+    )
 
     try:
         model, device = load_segmentation_model()
@@ -254,49 +278,89 @@ def main():
         st.exception(e)
         return
 
-    if "clicked" not in st.session_state:
-        st.session_state.clicked = False
-
-    if st.button("Запустить сегментацию") or st.session_state.clicked:
-        st.session_state.clicked = True
-
-        with st.spinner("Обработка изображений..."):
+    if st.button("Запустить сегментацию"):
+        with st.spinner("Модель строит маску..."):
             try:
-                mask = predict_mask(model=model,device=device,image=image,threshold=threshold,)
+                mask = predict_mask(
+                    model=model,
+                    device=device,
+                    image=image,
+                    threshold=threshold,
+                )
+
                 mask_image = make_mask_image(mask)
-                overlay = make_overlay(image=image, mask=mask, alpha=alpha)
 
-                pixel_area = define_pixel_area(uploaded_file)
-                area_map_raw = count_building_area(image, mask, pixel_area, noise_threshold=10)
-                area_map = Image.fromarray(area_map_raw)
-
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.subheader("Original")
-                    st.image(to_optimized_jpeg_cached(image),use_container_width=True,)
-                    
-                with col2:
-                    st.subheader("Mask")
-                    st.image(to_optimized_jpeg_cached(mask_image),use_container_width=True,)
-                    
-                with col3:
-                    st.subheader("Overlay")
-                    st.image(to_optimized_jpeg_cached(overlay),use_container_width=True,)
-
-                st.download_button(label="Скачать overlay PNG",data=convert_to_png_cached(overlay),file_name="overlay.png",mime="image/png",)
-
-                st.download_button(label="Скачать mask PNG",data=convert_to_png_cached(mask_image),file_name="mask.png", mime="image/png",)
-
-                st.subheader("Building area")
-                st.image(to_optimized_jpeg_cached(area_map), use_container_width=True)
-
-                st.download_button(label="Скачать areas PNG",data=convert_to_png_cached(area_map),file_name="area.png",mime="image/png",)
+                overlay = make_overlay(
+                    image=image,
+                    mask=mask,
+                    alpha=alpha,
+                )
 
             except Exception as e:
-                st.error("Ошибка во время выполнения алгоритма.")
+                st.error("Ошибка во время предсказания.")
                 st.exception(e)
-                st.session_state.clicked = False
                 return
+
+        # Сохраняем оригиналы картинок на диск сервера в папку static
+        overlay_path = os.path.join(STATIC_DIR, "overlay.png")
+        mask_path = os.path.join(STATIC_DIR, "mask.png")
+        overlay.save(overlay_path, format="PNG")
+        mask_image.save(mask_path, format="PNG")
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.subheader("Original")
+            st.image(to_screen_jpeg(image), use_container_width=True)
+
+        with col2:
+            st.subheader("Mask")
+            st.image(to_screen_jpeg(mask_image), use_container_width=True)
+
+        with col3:
+            st.subheader("Overlay")
+            st.image(to_screen_jpeg(overlay), use_container_width=True)
+
+        # HTML-кнопки для прямого скачивания без участия буфера Streamlit
+        st.markdown(
+            """
+            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <a href="app/static/overlay.png" download="overlay.png" style="text-decoration:none; padding:10px 20px; background-color:#262730; color:white; border-radius:5px; border:1px solid #464855; font-size:14px; font-weight:500;">📥 Скачать overlay PNG</a>
+                <a href="app/static/mask.png" download="mask.png" style="text-decoration:none; padding:10px 20px; background-color:#262730; color:white; border-radius:5px; border:1px solid #464855; font-size:14px; font-weight:500;">📥 Скачать mask PNG</a>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        try:
+            pixel_area = define_pixel_area(uploaded_file)
+            area_map_raw = count_building_area(
+                image, mask, pixel_area, noise_threshold=10
+            )
+
+            st.subheader("Building area")
+            area_map = Image.fromarray(area_map_raw)
+            st.image(to_screen_jpeg(area_map), use_container_width=True)
+
+            # Сохраняем третью картинку на диск
+            area_path = os.path.join(STATIC_DIR, "area.png")
+            area_map.save(area_path, format="PNG")
+
+            st.markdown(
+                """
+                <div style="margin-top: 10px;">
+                    <a href="app/static/area.png" download="area.png" style="text-decoration:none; padding:10px 20px; background-color:#262730; color:white; border-radius:5px; border:1px solid #464855; font-size:14px; font-weight:500;">📥 Скачать areas PNG</a>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        except Exception as e:
+            st.warning(
+                "Не удалось рассчитать гео-координаты. Возможно, файл не содержит метаданных (не GeoTIFF)."
+            )
+            st.exception(e)
+            return
 
 
 if __name__ == "__main__":
