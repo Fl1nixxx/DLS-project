@@ -144,11 +144,20 @@ def make_mask_image(mask):
     return mask_img
 
 
-def image_to_png_bytes(image):
-    buffer = io.BytesIO()
-    image.save(buffer, format="PNG", optimize=True, compress_level=9)
-    buffer.seek(0)
-    return buffer.getvalue()
+def to_optimized_jpeg(pil_img, max_size=(1280, 720)):
+    img_copy = pil_img.copy()
+    img_copy.thumbnail(max_size)
+    if img_copy.mode != "RGB":
+        img_copy = img_copy.convert("RGB")
+    buf = io.BytesIO()
+    img_copy.save(buf, format="JPEG", quality=80)
+    buf.seek(0)
+    return buf
+
+def convert_to_png(pil_img):
+    buf = io.BytesIO()
+    pil_img.save(buf, format="PNG", optimize=True, compress_level=6)
+    return buf.getvalue()
 
 def count_building_area(image, mask, pixel_area, noise_threshold=7):
     FONT_SIZE = 3.0
@@ -209,35 +218,25 @@ def count_building_area(image, mask, pixel_area, noise_threshold=7):
 
 
 def main():
-    st.set_page_config(
-        page_title="Image Segmentation App",
-        layout="wide")
+    st.set_page_config(page_title="Image Segmentation App", layout="wide")
 
     st.title("Image Segmentation App")
     st.write(
-        "Загрузи изображение в формате `.tif`, `.tiff`"
+        "Загрузи изображение в формате `.tif`, `.tiff`. "
         "Приложение построит сегментационную маску и наложит её поверх изображения.")
 
     with st.sidebar:
         st.header("Настройки")
-
-        threshold = st.slider("Порог сегментации",min_value=0.0,max_value=1.0,value=0.5,step=0.05,)
-
-        alpha = st.slider("Прозрачность маски",min_value=0.0,max_value=1.0,value=0.45,step=0.05,)
-
-        st.divider()
-
-        st.write("Поддерживаемые форматы:")
-        st.code(".tif, .tiff")
+        threshold = st.slider("Порог сегментации",min_value=0.0,max_value=1.0,value=0.5,step=0.05)
+        alpha = st.slider("Прозрачность маски",min_value=0.0,max_value=1.0,value=0.45, step=0.05)
 
     st.subheader("Загрузка изображения")
-
-    uploaded_file = st.file_uploader(
-        "Выбери изображение",
-        type=["tif", "tiff"],)
+    uploaded_file = st.file_uploader("Выбери изображение",type=["tif", "tiff"])
 
     if uploaded_file is None:
         st.info("Загрузи изображение в формате `.tif`, `.tiff`")
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
         return
 
     try:
@@ -247,9 +246,7 @@ def main():
         st.exception(e)
         return
 
-    st.success(
-        f"Файл загружен: `{uploaded_file.name}`. "
-        f"Размер изображения: {image.size[0]} x {image.size[1]}")
+    st.success(f"Файл загружен: `{uploaded_file.name}`. Размер: {image.size[0]} x {image.size[1]}")
 
     try:
         model, device = load_segmentation_model()
@@ -261,48 +258,53 @@ def main():
     if st.button("Запустить сегментацию"):
         with st.spinner("Модель строит маску..."):
             try:
-                mask = predict_mask(model=model,device=device,image=image,threshold=threshold,)
-
+                mask = predict_mask(model=model,device=device,image=image,threshold=threshold)
                 mask_image = make_mask_image(mask)
+                overlay = make_overlay(image=image, mask=mask, alpha=alpha)
 
-                overlay = make_overlay(image=image,mask=mask,alpha=alpha,)
+                pixel_area = define_pixel_area(uploaded_file)
+                area_map_raw = count_building_area(image, mask, pixel_area, noise_threshold=10)
+                area_map = Image.fromarray(area_map_raw)
+
+                st.session_state["raw_overlay"] = overlay
+                st.session_state["raw_mask"] = mask_image
+                st.session_state["raw_area"] = area_map
+
+                st.session_state["orig_disp"] = to_optimized_jpeg(image)
+                st.session_state["mask_disp"] = to_optimized_jpeg(mask_image)
+                st.session_state["overlay_disp"] = to_optimized_jpeg(overlay)
+                st.session_state["area_disp"] = to_optimized_jpeg(area_map)
+
+                st.session_state["results_ready"] = True
 
             except Exception as e:
                 st.error("Ошибка во время предсказания.")
                 st.exception(e)
                 return
 
+    if st.session_state.get("results_ready"):
         col1, col2, col3 = st.columns(3)
 
         with col1:
             st.subheader("Original")
-            st.image(image, use_container_width=True)
+            st.image(st.session_state["orig_disp"], use_container_width=True)
 
         with col2:
             st.subheader("Mask")
-            st.image(mask_image, use_container_width=True)
+            st.image(st.session_state["mask_disp"], use_container_width=True)
 
         with col3:
             st.subheader("Overlay")
-            st.image(overlay, use_container_width=True)
+            st.image(st.session_state["overlay_disp"], use_container_width=True)
 
-        st.download_button(label="Скачать overlay PNG",data=image_to_png_bytes(overlay),file_name="overlay.png",mime="image/png",)
+        st.download_button(label="Скачать overlay PNG",data=lambda: convert_to_png(st.session_state["raw_overlay"]),file_name="overlay.png",mime="image/png")
 
-        st.download_button(label="Скачать mask PNG",data=image_to_png_bytes(mask_image),file_name="mask.png",mime="image/png",)
-        
-        try:
-            pixel_area = define_pixel_area(uploaded_file)
-            area_map = count_building_area(image, mask, pixel_area, noise_threshold=10)
+        st.download_button(label="Скачать mask PNG",data=lambda: convert_to_png(st.session_state["raw_mask"]),file_name="mask.png",mime="image/png")
 
-            st.subheader("Building area")
-            st.image(area_map, use_container_width=True)
-        except Exception as e:
-            st.warning("Не удалось рассчитать гео-координаты. Возможно, файл не содержит метаданных (не GeoTIFF).")
-            st.exception(e)
-            return
+        st.subheader("Building area")
+        st.image(st.session_state["area_disp"], use_container_width=True)
 
-        area_map = Image.fromarray(area_map)
-        st.download_button(label="Скачать areas PNG",data=image_to_png_bytes(area_map),file_name="area.png",mime="image/png",)
+        st.download_button(label="Скачать areas PNG", data=lambda: convert_to_png(st.session_state["raw_area"]),file_name="area.png",mime="image/png")
 
 if __name__ == "__main__":
     main()
