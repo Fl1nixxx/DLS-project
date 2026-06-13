@@ -211,9 +211,19 @@ def main():
 
     st.title("Image Segmentation App")
     st.write(
-        "Загрузи изображение в формате `.tif`, `.tiff` "
+        "Загрузи изображение в формате `.tif`, `.tiff`. "
         "Приложение построит сегментационную маску и наложит её поверх изображения."
     )
+
+    # Инициализация сессии для хранения результатов (защита от перезапусков страницы)
+    if "segmentation_done" not in st.session_state:
+        st.session_state.segmentation_done = False
+        st.session_state.mask_image = None
+        st.session_state.overlay = None
+        st.session_state.area_map = None
+        st.session_state.overlay_bytes = None
+        st.session_state.mask_bytes = None
+        st.session_state.area_bytes = None
 
     with st.sidebar:
         st.header("Настройки")
@@ -235,7 +245,6 @@ def main():
         )
 
         st.divider()
-
         st.write("Поддерживаемые форматы:")
         st.code(".tif, .tiff")
 
@@ -248,6 +257,8 @@ def main():
 
     if uploaded_file is None:
         st.info("Загрузи изображение в формате `.tif`, `.tiff`")
+        # Сбрасываем состояние, если пользователь удалил файл
+        st.session_state.segmentation_done = False
         return
 
     try:
@@ -269,29 +280,60 @@ def main():
         st.exception(e)
         return
 
+    # Кнопка запуска сегментации
     if st.button("Запустить сегментацию"):
         with st.spinner("Модель строит маску..."):
             try:
+                # 1. Считаем маску и оверлей
                 mask = predict_mask(
                     model=model,
                     device=device,
                     image=image,
                     threshold=threshold,
                 )
-
-                mask_image = make_mask_image(mask)
-
-                overlay = make_overlay(
+                mask_image_obj = make_mask_image(mask)
+                overlay_obj = make_overlay(
                     image=image,
                     mask=mask,
                     alpha=alpha,
                 )
 
+                # 2. Сразу сохраняем картинки и их ГОТОВЫЕ байты в сессию
+                st.session_state.mask_image = mask_image_obj
+                st.session_state.overlay = overlay_obj
+                st.session_state.mask_bytes = image_to_png_bytes(mask_image_obj)
+                st.session_state.overlay_bytes = image_to_png_bytes(overlay_obj)
+
+                # 3. Расчет гео-координат и площади
+                try:
+                    pixel_area = define_pixel_area(uploaded_file)
+                    area_map_np = count_building_area(
+                        image, mask, pixel_area, noise_threshold=10
+                    )
+                    area_map_obj = Image.fromarray(area_map_np)
+                    
+                    st.session_state.area_map = area_map_obj
+                    st.session_state.area_bytes = image_to_png_bytes(area_map_obj)
+                except Exception as e:
+                    st.warning(
+                        "Не удалось рассчитать гео-координаты. Возможно, файл не содержит метаданных (не GeoTIFF)."
+                    )
+                    st.exception(e)
+                    st.session_state.area_map = None
+                    st.session_state.area_bytes = None
+
+                # Фиксируем успешное завершение
+                st.session_state.segmentation_done = True
+
             except Exception as e:
                 st.error("Ошибка во время предсказания.")
                 st.exception(e)
+                st.session_state.segmentation_done = False
                 return
 
+    # Отрисовка интерфейса результатов (срабатывает и после нажатия кнопок скачивания)
+    if st.session_state.segmentation_done:
+        st.divider()
         col1, col2, col3 = st.columns(3)
 
         with col1:
@@ -300,48 +342,38 @@ def main():
 
         with col2:
             st.subheader("Mask")
-            st.image(mask_image.convert("RGB"), use_container_width=True)
+            st.image(st.session_state.mask_image.convert("RGB"), use_container_width=True)
 
         with col3:
             st.subheader("Overlay")
-            st.image(overlay.convert("RGB"), use_container_width=True)
+            st.image(st.session_state.overlay.convert("RGB"), use_container_width=True)
 
+        # Кнопки используют заранее сгенерированные байты из памяти
         st.download_button(
             label="Скачать overlay PNG",
-            data=image_to_png_bytes(overlay),
+            data=st.session_state.overlay_bytes,
             file_name="overlay.png",
             mime="image/png",
         )
 
         st.download_button(
             label="Скачать mask PNG",
-            data=image_to_png_bytes(mask_image),
+            data=st.session_state.mask_bytes,
             file_name="mask.png",
             mime="image/png",
         )
 
-        try:
-            pixel_area = define_pixel_area(uploaded_file)
-            area_map = count_building_area(
-                image, mask, pixel_area, noise_threshold=10
-            )
-
+        # Выводим карту площадей, если она успешно создалась
+        if st.session_state.area_map is not None:
             st.subheader("Building area")
-            st.image(area_map, use_container_width=True)
-        except Exception as e:
-            st.warning(
-                "Не удалось рассчитать гео-координаты. Возможно, файл не содержит метаданных (не GeoTIFF)."
-            )
-            st.exception(e)
-            return
+            st.image(st.session_state.area_map, use_container_width=True)
 
-        area_map = Image.fromarray(area_map)
-        st.download_button(
-            label="Скачать areas PNG",
-            data=image_to_png_bytes(area_map),
-            file_name="area.png",
-            mime="image/png",
-        )
+            st.download_button(
+                label="Скачать areas PNG",
+                data=st.session_state.area_bytes,
+                file_name="area.png",
+                mime="image/png",
+            )
 
 
 if __name__ == "__main__":
