@@ -144,14 +144,12 @@ def make_mask_image(mask):
     return mask_img
 
 
-def count_building_area(image, mask, pixel_area, noise_threshold=7):
+def count_building_area(mask, pixel_area, noise_threshold=7):
     FONT_SIZE = 3.0
     THICKNESS = 8
     PADDING = 25
     TEXT_COLOR = (255, 255, 255)
     BG_COLOR = (0, 0, 0)
-
-    result_img = np.array(image).copy()
 
     binary_mask = np.array(mask)
     if binary_mask.max() == 1:
@@ -173,39 +171,15 @@ def count_building_area(image, mask, pixel_area, noise_threshold=7):
 
         building_idx += 1
         area_rounded = round(area_sqm, 2)
-        buildings_report.append((building_idx, area_rounded))
-
-        cv2.drawContours(result_img, [cnt], -1, (0, 255, 0), 3)
-
-        x, y, w, h = cv2.boundingRect(cnt)
-
-        text = f"ID {building_idx}: {area_rounded} m2"
-
-        (text_width, text_height), baseline = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, FONT_SIZE, THICKNESS)
-
-        text_x = int(x + w / 2) - int(text_width / 2)
-        text_y = int(y + h / 2) + int(text_height / 2)
-
-        box_x1 = text_x - PADDING
-        box_y1 = text_y - text_height - PADDING
-        box_x2 = text_x + text_width + PADDING
-        box_y2 = text_y + baseline + PADDING
-
-        cv2.rectangle(result_img, (box_x1, box_y1), (box_x2, box_y2), BG_COLOR, -1)
-
-        cv2.rectangle(result_img, (box_x1, box_y1), (box_x2, box_y2), (255, 255, 255), 4)
-
-        cv2.putText(result_img,text,(text_x, text_y),cv2.FONT_HERSHEY_SIMPLEX,FONT_SIZE,TEXT_COLOR,THICKNESS,cv2.LINE_AA)
-    
-    return result_img
+        buildings_report.append(area_rounded)
+        
+    return sum(buildings_report)
 
 def image_to_png_bytes(image):
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
     buffer.seek(0)
     return buffer.getvalue()
-
-
 
 
 def main():
@@ -324,26 +298,21 @@ def main():
 
         try:
             pixel_area = define_pixel_area(uploaded_file)
-            area_map = count_building_area(
-                image, mask, pixel_area, noise_threshold=10
-            )
-
-            st.subheader("Building area")
-            st.image(area_map, use_container_width=True)
+            total_area = count_building_area(mask, pixel_area, noise_threshold=10)
+            
+            st.markdown("---")
+            st.subheader("📊 Статистика застройки")
+            
+            st.metric(
+                label="📐 Суммарная площадь застройки", 
+                value=f"{total_area:,.2f} м²".replace(",", " "))
+            
         except Exception as e:
             st.warning(
-                "Не удалось рассчитать гео-координаты. Возможно, файл не содержит метаданных (не GeoTIFF)."
+                "⚠️ Не удалось рассчитать гео-координаты. Возможно, файл не содержит метаданных (не GeoTIFF)."
             )
             st.exception(e)
-            return
 
-        area_map = Image.fromarray(area_map)
-        st.download_button(
-            label="Скачать areas PNG",
-            data=image_to_png_bytes(area_map),
-            file_name="area.png",
-            mime="image/png",
-        )
 
 
 if __name__ == "__main__":
