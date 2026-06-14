@@ -6,6 +6,10 @@ import torch
 import torch.nn as nn
 from torchvision import transforms
 
+IMAGE_SIZE = 512
+NORMALIZE_MEAN = [0.485, 0.456, 0.406]
+NORMALIZE_STD = [0.229, 0.224, 0.225]
+
 def read_image(uploaded_file):
     image = Image.open(uploaded_file)
 
