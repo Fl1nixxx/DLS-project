@@ -248,14 +248,14 @@ def main():
             st.download_button(
                 label="⬇️ Скачать overlay PNG",
                 data=image_to_png_bytes(res["overlay"]),
-                file_name=f"overlay_{uploaded_file.name}.png",
+                file_name=f"overlay_{uploaded_file}.png",
                 mime="image/png",
                 use_container_width=True)
         with down_col2:
             st.download_button(
                 label="⬇️ Скачать mask PNG",
                 data=image_to_png_bytes(res["mask_image"]),
-                file_name=f"mask_{uploaded_file.name}.png",
+                file_name=f"mask_{uploaded_file}.png",
                 mime="image/png",
                 use_container_width=True)
 
