@@ -213,9 +213,7 @@ def main():
         manual_pixel_area = pixel_cm2 / 10000.0
 
         st.divider()
-        st.write("Поддерживаемые форматы:")
-        st.code(".tif, .tiff, .png, .jpg, .jpeg")
-
+ 
     st.subheader("📂 Загрузка изображения")
 
     uploaded_file = st.file_uploader("Выбери изображение",type=["tif", "tiff", "png", "jpg", "jpeg"],label_visibility="collapsed")
