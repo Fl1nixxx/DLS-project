@@ -53,19 +53,27 @@ def load_segmentation_model():
 
 
 def define_pixel_area(uploaded_file):
-    uploaded_file.seek(0)
-    with MemoryFile(uploaded_file.read()) as memfile:
-        with memfile.open() as src:
-            crs = src.crs
-            x, y = src.res
-            if crs and crs.is_projected:
-                pixel_area = x * y
-            else:
-                lat = src.bounds.bottom + (src.bounds.top - src.bounds.bottom) / 2
-                meters_per_degree_lat = 111132
-                meters_per_degree_lon = meters_per_degree_lat * math.cos(math.radians(lat))
-                pixel_area = (x * meters_per_degree_lon) * (y * meters_per_degree_lat)
-    return pixel_area
+    try:
+        uploaded_file.seek(0)
+        with MemoryFile(uploaded_file.read()) as memfile:
+            with memfile.open() as src:
+                crs = src.crs
+                x, y = src.res
+                
+                if src.bounds.left == 0.0 and src.bounds.bottom == 0.0:
+                    return None 
+                
+                if crs and crs.is_projected:
+                    pixel_area = x * y
+                else:
+                    lat = src.bounds.bottom + (src.bounds.top - src.bounds.bottom) / 2
+                    meters_per_degree_lat = 111132
+                    meters_per_degree_lon = meters_per_degree_lat * math.cos(math.radians(lat))
+                    pixel_area = (x * meters_per_degree_lon) * (y * meters_per_degree_lat)
+                    
+        return pixel_area
+    except Exception:
+        return None
 
 def read_image(uploaded_file):
     image = Image.open(uploaded_file)
@@ -181,45 +189,36 @@ def image_to_png_bytes(image):
 def main():
     st.set_page_config(page_title="Image Segmentation App", layout="wide")
 
-    st.title("Image Segmentation App")
+    st.title("🏢 Image Segmentation App")
     st.write(
-        "Загрузи изображение в формате `.tif`, `.tiff` "
-        "Приложение построит сегментационную маску и наложит её поверх изображения."
-    )
+        "Загрузите изображение в формате `.tif`, `.tiff`, `.png` или `.jpg`. "
+        "Приложение построит сегментационную маску, наложит её поверх изображения и рассчитает статистику застройки.")
 
     with st.sidebar:
-        st.header("Настройки")
+        st.header("⚙️ Настройки")
 
-        threshold = st.slider(
-            "Порог сегментации",
-            min_value=0.0,
-            max_value=1.0,
-            value=0.5,
-            step=0.05,
-        )
+        threshold = st.slider("Порог сегментации", min_value=0.0, max_value=1.0, value=0.5, step=0.05,)
 
-        alpha = st.slider(
-            "Прозрачность маски",
-            min_value=0.0,
-            max_value=1.0,
-            value=0.45,
-            step=0.05,
-        )
+        alpha = st.slider("Прозрачность маски",min_value=0.0, max_value=1.0, value=0.45, step=0.05,)
 
         st.divider()
 
+        st.subheader("📐 Размер пикселя")
+        pixel_mode = st.radio("Способ определения:",["Авто (из метаданных GeoTIFF)", "Вручную (в см² на пиксель)"])
+
+        manual_pixel_area = st.number_input("Площадь пикселя (мм² / px):",min_value=0.1,value=1, step=0.1 ,help="Укажите, какую площадь земной поверхности покрывает один пиксель в квадратных метрах.")
+
+        st.divider()
         st.write("Поддерживаемые форматы:")
-        st.code(".tif, .tiff")
+        st.code(".tif, .tiff, .png, .jpg, .jpeg")
 
-    st.subheader("Загрузка изображения")
 
-    uploaded_file = st.file_uploader(
-        "Выбери изображение",
-        type=["tif", "tiff"],
-    )
+    st.subheader("📂 Загрузка изображения")
+
+    uploaded_file = st.file_uploader("Выбери изображение",type=["tif", "tiff", "png", "jpg", "jpeg"],label_visibility="collapsed")
 
     if uploaded_file is None:
-        st.info("Загрузи изображение в формате `.tif`, `.tiff`")
+        st.info("Пожалуйста, загрузите изображение для начала работы.")
         return
 
     try:
@@ -231,8 +230,7 @@ def main():
 
     st.success(
         f"Файл загружен: `{uploaded_file.name}`. "
-        f"Размер изображения: {image.size[0]} x {image.size[1]}"
-    )
+        f"Размер изображения: {image.size[0]} x {image.size[1]} px")
 
     try:
         model, device = load_segmentation_model()
@@ -241,92 +239,79 @@ def main():
         st.exception(e)
         return
 
-    if st.button("Запустить сегментацию"):
-        with st.spinner("Модель строит маску..."):
+    if "seg_results" not in st.session_state:
+        st.session_state.seg_results = None
+
+    if st.button("🚀 Запустить сегментацию", type="primary", use_container_width=True):
+        with st.spinner("Модель строит маску и рассчитывает показатели..."):
             try:
-                mask = predict_mask(
-                    model=model,
-                    device=device,
-                    image=image,
-                    threshold=threshold,
-                )
-
+                mask = predict_mask(model=model, device=device, image=image, threshold=threshold)
                 mask_image = make_mask_image(mask)
+                overlay = make_overlay(image=image, mask=mask, alpha=alpha)
 
-                overlay = make_overlay(
-                    image=image,
-                    mask=mask,
-                    alpha=alpha,
-                )
+                used_manual_fallback = False
+                
+                if pixel_mode == "Вручную (в см² на пиксель)":
+                    pixel_area = manual_pixel_area
+                else:
+                    pixel_area = define_pixel_area(uploaded_file)
+                    if pixel_area is None:
+                        pixel_area = manual_pixel_area
+                        used_manual_fallback = True
+                        
+                total_area, buildings_count, noise_count = count_building_area(mask=mask, pixel_area=pixel_area, noise_threshold=10)
+
+                st.session_state.seg_results = {"mask_image": mask_image,"overlay": overlay,"total_area": total_area,"buildings_count": buildings_count, "noise_count": noise_count, "used_manual_fallback": used_manual_fallback}
 
             except Exception as e:
-                st.error("Ошибка во время предсказания.")
+                st.error("Ошибка во время обработки и расчета.")
                 st.exception(e)
                 return
 
-        col1, col2, col3 = st.columns(3)
+    if st.session_state.seg_results is not None:
+        res = st.session_state.seg_results
 
-        with col1:
-            st.subheader("Original")
+        if res.get("used_manual_fallback"):
+            st.warning(
+                "⚠️ Внимание: Файл не содержит гео-метаданных (PNG/JPG или обычный TIF). "
+                f"Было использовано значение ручного ввода из настроек сайдбара ({manual_pixel_area} мм²/px).")
+
+        tab1, tab2, tab3 = st.tabs(["🖼️ Совмещение (Overlay)", "🎭 Маска (Mask)", "📷 Оригинал"])
+        
+        with tab1:
+            st.image(res["overlay"].convert("RGB"), use_container_width=True)
+        with tab2:
+            st.image(res["mask_image"].convert("RGB"), use_container_width=True)
+        with tab3:
             st.image(image.convert("RGB"), use_container_width=True)
 
-        with col2:
-            st.subheader("Mask")
-            st.image(mask_image.convert("RGB"), use_container_width=True)
-
-        with col3:
-            st.subheader("Overlay")
-            st.image(overlay.convert("RGB"), use_container_width=True)
-
-        st.download_button(
-            label="Скачать overlay PNG",
-            data=image_to_png_bytes(overlay),
-            file_name="overlay.png",
-            mime="image/png",
-        )
-
-        st.download_button(
-            label="Скачать mask PNG",
-            data=image_to_png_bytes(mask_image),
-            file_name="mask.png",
-            mime="image/png",
-        )
-
-        try:
-            pixel_area = define_pixel_area(uploaded_file)
+        down_col1, down_col2 = st.columns(2)
+        with down_col1:
+            st.download_button(label="⬇️ Скачать overlay PNG",data=image_to_png_bytes(res["overlay"]),file_name=f"overlay_{uploaded_file.name}.png",mime="image/png",use_container_width=True)
             
-            total_area, buildings_count, noise_count = count_building_area(
-                mask, pixel_area, noise_threshold=10
-            )
-            
-            st.markdown("---")
-            st.subheader("📊 Статистика застройки")
-            
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.metric(
-                    label="📐 Суммарная площадь застройки", 
-                    value=f"{total_area:,.2f} м²".replace(",", " ")
-                )
-                
-            with col2:
-                st.metric(
-                    label="🏠 Количество зданий", 
-                    value=f"{buildings_count} шт.")
-                
-            with col3:
-                st.metric(
-                    label="🗑️ Удалено мелкого шума (<10м²)", 
-                    value=f"{noise_count} объектов")
-            
-        except Exception as e:
-            st.warning(
-                "⚠️ Не удалось рассчитать гео-координаты. Возможно, файл не содержит метаданных (не GeoTIFF)."
-            )
-            st.exception(e)
+        with down_col2:
+            st.download_button(label="⬇️ Скачать mask PNG",data=image_to_png_bytes(res["mask_image"]),file_name=f"mask_{uploaded_file.name}.png",mime="image/png",use_container_width=True)
 
+        st.markdown("---")
+        st.subheader("📊 Статистика застройки")
 
+        col_stat1, col_stat2, col_stat3 = st.columns(3)
+
+        with col_stat1:
+            st.metric(
+                label="📐 Суммарная площадь застройки", 
+                value=f"{res['total_area']:,.2f} м²".replace(",", " "))
+
+        with col_stat2:
+            st.metric(
+                label="🏠 Количество зданий", 
+                value=f"{res['buildings_count']} шт.")
+
+        with col_stat3:
+            st.metric(
+                label="🗑️ Удалено мелкого шума (<10м²)", 
+                value=f"{res['noise_count']} объектов")
 
 if __name__ == "__main__":
     main()
+
