@@ -195,24 +195,17 @@ def main():
     if st.button("🚀 Запустить сегментацию", type="primary", use_container_width=True):
         with st.spinner("Модель строит маску..."):
             try:
-                mask = predict_mask(model=model, device=device, image=image, threshold=threshold)
+                mask = predict_mask(model=model,device=device,image=image,threshold=threshold,)
                 mask_image = make_mask_image(mask)
-                overlay = make_overlay(image=image, mask=mask, alpha=alpha)
+                overlay = make_overlay(image=image,mask=mask,alpha=alpha,)
 
-                overlay_bytes = image_to_png_bytes(overlay)
-                mask_bytes = image_to_png_bytes(mask_image)
-
-                st.session_state.seg_results = {
-                    "raw_mask": mask,
-                    "mask_image": mask_image, 
-                    "overlay": overlay,
-                    "overlay_bytes": overlay_bytes,
-                    "mask_bytes": mask_bytes}
+                st.session_state.seg_results = {"raw_mask": mask,"mask_image": mask_image, "overlay": overlay}
 
             except Exception as e:
                 st.error("Ошибка во время обработки моделью.")
                 st.exception(e)
                 return
+
 
     if st.session_state.seg_results is not None:
         res = st.session_state.seg_results
@@ -251,24 +244,18 @@ def main():
             st.image(image.convert("RGB"), use_container_width=True)
 
         down_col1, down_col2 = st.columns(2)
-
-        down_col1, down_col2 = st.columns(2)
-        
-        base_name = os.path.splitext(uploaded_file.name)[0]
-
         with down_col1:
             st.download_button(
                 label="⬇️ Скачать overlay PNG",
-                data=res["overlay_bytes"],
-                file_name=f"overlay_{base_name}.png",
+                data=image_to_png_bytes(res["overlay"]),
+                file_name=f"overlay_{uploaded_file.name}.png",
                 mime="image/png",
                 use_container_width=True)
-                
         with down_col2:
             st.download_button(
                 label="⬇️ Скачать mask PNG",
-                data=res["mask_bytes"],
-                file_name=f"mask_{base_name}.png",
+                data=image_to_png_bytes(res["mask_image"]),
+                file_name=f"mask_{uploaded_file.name}.png",
                 mime="image/png",
                 use_container_width=True)
 
@@ -285,6 +272,7 @@ def main():
 
         with col_stat3:
             st.metric(label="🗑️ Удалено мелкого шума (<10м²)",  value=f"{noise_count} объектов")
+
 
 if __name__ == "__main__":
     main()
