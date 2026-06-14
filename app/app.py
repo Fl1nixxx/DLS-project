@@ -187,15 +187,14 @@ def image_to_png_bytes(image):
 
 
 def main():
-
-     try:
+    
+    try:
         with open("style.css", "r", encoding="utf-8") as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
     except FileNotFoundError:
         pass
 
     st.set_page_config(page_title="Image Segmentation App", layout="wide")
-
     st.title("🏢 Image Segmentation App")
     st.write(
         "Загрузите изображение в формате `.tif`, `.tiff`, `.png` или `.jpg`. "
