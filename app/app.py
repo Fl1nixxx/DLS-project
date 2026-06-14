@@ -244,18 +244,21 @@ def main():
             st.image(image.convert("RGB"), use_container_width=True)
 
         down_col1, down_col2 = st.columns(2)
+
+        base_name = os.path.splitext(uploaded_file.name)[0]
+        
         with down_col1:
             st.download_button(
                 label="⬇️ Скачать overlay PNG",
                 data=image_to_png_bytes(res["overlay"]),
-                file_name=f"overlay_{uploaded_file}.png",
+                file_name=f"overlay_{base_name}.png", 
                 mime="image/png",
                 use_container_width=True)
         with down_col2:
             st.download_button(
                 label="⬇️ Скачать mask PNG",
                 data=image_to_png_bytes(res["mask_image"]),
-                file_name=f"mask_{uploaded_file}.png",
+                file_name=f"mask_{base_name}.png",
                 mime="image/png",
                 use_container_width=True)
 
