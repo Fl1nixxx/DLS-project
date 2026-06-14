@@ -1,24 +1,22 @@
-import io
 import os
 import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import numpy as np
-
 import urllib.request
-
 import streamlit as st
-
-from PIL import Image, ImageSequence
-import cv2
 import torch
-import torch.nn as nn
-from torchvision import transforms
 
 from model import build_model
 from count_area import count_building_area
 from count_area import define_pixel_area
+from image_work import read_image
+from image_work import preprocess_image
+from image_work import predict_mask
+from image_work import make_overlay
+from image_work import make_mask_image
+from image_work import image_to_png_bytes
 
 WEIGHTS_PATH = "best_weights.pth"
 WEIGHTS_URL = "https://github.com/Fl1nixxx/DLS-project/releases/download/v1.5/best_weights.pth"
@@ -49,90 +47,6 @@ def load_segmentation_model():
     model.load_state_dict(state_dict)
     model.eval()
     return model, device
-
-def read_image(uploaded_file):
-    image = Image.open(uploaded_file)
-
-    if uploaded_file.name.lower().endswith((".tif", ".tiff")):
-        try:
-            image = next(ImageSequence.Iterator(image))
-        except Exception:
-            pass
-
-    image = image.convert("RGB")
-    return image
-
-def preprocess_image(image):
-    transform_list = [
-        transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=NORMALIZE_MEAN, std=NORMALIZE_STD)]
-
-    transform = transforms.Compose(transform_list)
-    x = transform(image)
-    
-    x = x.unsqueeze(0)
-
-    return x
-  
-def predict_mask(model, device, image, threshold):
-    original_size = image.size
-
-    x = preprocess_image(image).to(device)
-    model.eval()
-
-    with torch.no_grad():
-        logits = model(x)
-        
-        if isinstance(logits, list):
-            logits = logits[-1]
-            
-        logits = nn.functional.interpolate(logits, size=x.shape[2:], mode='bilinear', align_corners=False)
-        
-        probs = torch.sigmoid(logits)
-        mask = (probs > threshold).float()
-
-    mask_np = mask.squeeze().detach().cpu().numpy()
-    mask_img = Image.fromarray((mask_np * 255).astype(np.uint8))
-    mask_img = mask_img.resize(original_size, resample=Image.NEAREST)
-    final_mask_np = np.array(mask_img).astype(np.float32) / 255.0
-
-    return final_mask_np
-
-def make_overlay(image, mask, alpha):
-    image_np = np.array(image).astype(np.float32)
-
-    if image_np.ndim == 2:
-        image_np = np.stack([image_np, image_np, image_np], axis=-1)
-
-    if image_np.shape[-1] == 4:
-        image_np = image_np[:, :, :3]
-
-    overlay = image_np.copy()
-    mask_bool = mask > 0.5
-
-    color = np.array([255, 0, 0], dtype=np.float32)
-
-    overlay[mask_bool] = (
-        image_np[mask_bool] * (1.0 - alpha)
-        + color * alpha
-    )
-
-    overlay = np.clip(overlay, 0, 255).astype(np.uint8)
-
-    return Image.fromarray(overlay)
-
-def make_mask_image(mask):
-    mask_img = Image.fromarray((mask * 255).astype(np.uint8))
-    return mask_img
-
-
-def image_to_png_bytes(image):
-    buffer = io.BytesIO()
-    image.save(buffer, format="PNG")
-    buffer.seek(0)
-    return buffer.getvalue()
-
 
 def main():
     
@@ -276,4 +190,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
