@@ -1,6 +1,43 @@
-.stSlider [data-baseweb="slider"] > div > div > div > div { background-color: #5A189A !important; }
-.stSlider [data-baseweb="slider"] button { background-color: #5A189A !important; border-color: #5A189A !important; }
-button[kind="primary"] { background-color: #4A127A !important; border-color: #4A127A !important; color: white !important; }
-button[kind="primary"]:hover { background-color: #5A189A !important; border-color: #5A189A !important; }
-.stRadio div[role="radiogroup"] input[type="radio"]:checked + div { background-color: #5A189A !important; }
-.stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: #5A189A !important; border-bottom-color: #5A189A !important; }
+.stSlider [data-baseweb="slider"] > div > div > div > div { 
+    background-color: #5A189A !important; 
+}
+
+.stSlider [data-baseweb="slider"] button { 
+    background-color: #5A189A !important; 
+    border-color: #5A189A !important; 
+}
+
+.stSlider [data-testid="stWidgetLabel"] + div div {
+    color: #9D4EDD !important;
+}
+
+button[kind="primary"] { 
+    background-color: #4A127A !important; 
+    border-color: #4A127A !important; 
+    color: white !important; 
+}
+button[kind="primary"]:hover { 
+    background-color: #5A189A !important; 
+    border-color: #5A189A !important; 
+}
+
+.stRadio div[role="radiogroup"] input[type="radio"]:checked + div { 
+    background-color: #5A189A !important; 
+}
+
+
+.stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { 
+    color: #5A189A !important; 
+    border-bottom-color: #5A189A !important; 
+}
+
+div[data-testid="stNotification"] {
+    background-color: #1A1C23 !important;
+    border-left: 5px solid #5A189A !important;
+    color: #FAFAFA !important;
+}
+
+div[data-testid="stNotification"] svg {
+    fill: #9D4EDD !important;
+    color: #9D4EDD !important;
+}
