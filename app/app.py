@@ -143,14 +143,7 @@ def make_mask_image(mask):
     mask_img = Image.fromarray((mask * 255).astype(np.uint8))
     return mask_img
 
-
-def count_building_area(mask, pixel_area, noise_threshold=7):
-    FONT_SIZE = 3.0
-    THICKNESS = 8
-    PADDING = 25
-    TEXT_COLOR = (255, 255, 255)
-    BG_COLOR = (0, 0, 0)
-
+def count_building_area(mask, pixel_area, noise_threshold=10):
     binary_mask = np.array(mask)
     if binary_mask.max() == 1:
         binary_mask = (binary_mask * 255).astype(np.uint8)
@@ -159,21 +152,24 @@ def count_building_area(mask, pixel_area, noise_threshold=7):
 
     contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    building_idx = 0
     buildings_report = []
+    noise_count = 0
 
     for cnt in contours:
         pixel_count = cv2.contourArea(cnt)
         area_sqm = pixel_count * pixel_area
 
         if area_sqm < noise_threshold:
+            noise_count += 1
             continue
 
-        building_idx += 1
         area_rounded = round(area_sqm, 2)
         buildings_report.append(area_rounded)
         
-    return sum(buildings_report)
+    total_area = sum(buildings_report)
+    buildings_count = len(buildings_report)
+    
+    return total_area, buildings_count, noise_count
 
 def image_to_png_bytes(image):
     buffer = io.BytesIO()
@@ -298,14 +294,31 @@ def main():
 
         try:
             pixel_area = define_pixel_area(uploaded_file)
-            total_area = count_building_area(mask, pixel_area, noise_threshold=10)
+            
+            total_area, buildings_count, noise_count = count_building_area(
+                mask, pixel_area, noise_threshold=10
+            )
             
             st.markdown("---")
             st.subheader("📊 Статистика застройки")
             
-            st.metric(
-                label="📐 Суммарная площадь застройки", 
-                value=f"{total_area:,.2f} м²".replace(",", " "))
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric(
+                    label="📐 Суммарная площадь застройки", 
+                    value=f"{total_area:,.2f} м²".replace(",", " ")
+                )
+                
+            with col2:
+                st.metric(
+                    label="🏠 Количество зданий", 
+                    value=f"{buildings_count} шт.")
+                
+            with col3:
+                st.metric(
+                    label="🗑️ Удалено мелкого шума (<10м²)", 
+                    value=f"{noise_count} объектов")
             
         except Exception as e:
             st.warning(
