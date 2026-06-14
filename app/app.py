@@ -187,48 +187,35 @@ def image_to_png_bytes(image):
 
 
 def main():
+
+     try:
+        with open("style.css", "r", encoding="utf-8") as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    except FileNotFoundError:
+        pass
+
     st.set_page_config(page_title="Image Segmentation App", layout="wide")
 
     st.title("🏢 Image Segmentation App")
     st.write(
         "Загрузите изображение в формате `.tif`, `.tiff`, `.png` или `.jpg`. "
-        "Приложение построит сегментационную маску, наложит её поверх изображения и рассчитает статистику застройки."
-    )
+        "Приложение построит сегментационную маску, наложит её поверх изображения и рассчитает статистику застройки.")
     
     with st.sidebar:
         st.header("⚙️ Настройки")
 
-        threshold = st.slider(
-            "Порог сегментации",
-            min_value=0.0,
-            max_value=1.0,
-            value=0.5,
-            step=0.05,
-        )
+        threshold = st.slider("Порог сегментации",min_value=0.0,max_value=1.0,value=0.5,step=0.05,)
 
-        alpha = st.slider(
-            "Прозрачность маски",
-            min_value=0.0,
-            max_value=1.0,
-            value=0.45,
-            step=0.05,
-        )
+        alpha = st.slider("Прозрачность маски",min_value=0.0,max_value=1.0,value=0.45,step=0.05,)
 
         st.divider()
 
         st.subheader("📐 Размер пикселя")
         pixel_mode = st.radio(
             "Способ определения:",
-            ["Авто (из метаданных GeoTIFF)", "Вручную (в см² на пиксель)"]
-        )
+            ["Авто (из метаданных GeoTIFF)", "Вручную (в см² на пиксель)"])
 
-        pixel_cm2 = st.number_input(
-            "Площадь пикселя (см² / px):",
-            min_value=0.1,
-            value=900.0,
-            step=10.0,
-            help="Укажите, какую площадь земной поверхности покрывает один пиксель в квадратных сантиметрах."
-        )
+        pixel_cm2 = st.number_input("Площадь пикселя (см² / px):",min_value=0.1,value=900.0,step=10.0,help="Укажите, какую площадь земной поверхности покрывает один пиксель в квадратных сантиметрах.")
         
         manual_pixel_area = pixel_cm2 / 10000.0
 
@@ -238,11 +225,7 @@ def main():
 
     st.subheader("📂 Загрузка изображения")
 
-    uploaded_file = st.file_uploader(
-        "Выбери изображение",
-        type=["tif", "tiff", "png", "jpg", "jpeg"],
-        label_visibility="collapsed"
-    )
+    uploaded_file = st.file_uploader("Выбери изображение",type=["tif", "tiff", "png", "jpg", "jpeg"],label_visibility="collapsed")
 
     if uploaded_file is None:
         st.info("Пожалуйста, загрузите изображение для начала работы.")
@@ -273,24 +256,11 @@ def main():
     if st.button("🚀 Запустить сегментацию", type="primary", use_container_width=True):
         with st.spinner("Модель строит маску..."):
             try:
-                mask = predict_mask(
-                    model=model,
-                    device=device,
-                    image=image,
-                    threshold=threshold,
-                )
+                mask = predict_mask(model=model,device=device,image=image,threshold=threshold,)
                 mask_image = make_mask_image(mask)
-                overlay = make_overlay(
-                    image=image,
-                    mask=mask,
-                    alpha=alpha,
-                )
+                overlay = make_overlay(image=image,mask=mask,alpha=alpha,)
 
-                st.session_state.seg_results = {
-                    "raw_mask": mask,
-                    "mask_image": mask_image,
-                    "overlay": overlay
-                }
+                st.session_state.seg_results = {"raw_mask": mask,"mask_image": mask_image, "overlay": overlay}
 
             except Exception as e:
                 st.error("Ошибка во время обработки моделью.")
@@ -313,11 +283,7 @@ def main():
                 else:
                     used_manual_fallback = False
 
-            total_area, buildings_count, noise_count = count_building_area(
-                mask=res["raw_mask"], 
-                pixel_area=pixel_area, 
-                noise_threshold=10
-            )
+            total_area, buildings_count, noise_count = count_building_area(mask=res["raw_mask"], pixel_area=pixel_area, noise_threshold=10)
 
         except Exception as e:
             st.error("Ошибка при динамическом расчете площади застройки.")
@@ -327,8 +293,7 @@ def main():
         if used_manual_fallback:
             st.warning(
                 f"⚠️ Внимание: Файл не содержит гео-метаданных (PNG/JPG). "
-                f"Использовано значение ручного ввода из настроек сайдбара ({pixel_cm2} см²/px)."
-            )
+                f"Использовано значение ручного ввода из настроек сайдбара ({pixel_cm2} см²/px).")
 
         tab1, tab2, tab3 = st.tabs(["🖼️ Совмещение (Overlay)", "🎭 Маска (Mask)", "📷 Оригинал"])
         
@@ -346,16 +311,14 @@ def main():
                 data=image_to_png_bytes(res["overlay"]),
                 file_name=f"overlay_{uploaded_file.name}.png",
                 mime="image/png",
-                use_container_width=True
-            )
+                use_container_width=True)
         with down_col2:
             st.download_button(
                 label="⬇️ Скачать mask PNG",
                 data=image_to_png_bytes(res["mask_image"]),
                 file_name=f"mask_{uploaded_file.name}.png",
                 mime="image/png",
-                use_container_width=True
-            )
+                use_container_width=True)
 
         st.markdown("---")
         st.subheader("📊 Статистика застройки")
@@ -363,23 +326,13 @@ def main():
         col_stat1, col_stat2, col_stat3 = st.columns(3)
 
         with col_stat1:
-            st.metric(
-                label="📐 Суммарная площадь застройки", 
-                value=f"{total_area:,.2f} м²".replace(",", " ")
-            )
+            st.metric(label="📐 Суммарная площадь застройки", value=f"{total_area:,.2f} м²".replace(",", " "))
 
         with col_stat2:
-            st.metric(
-                label="🏠 Количество зданий", 
-                value=f"{buildings_count} шт."
-            )
+            st.metric(label="🏠 Количество зданий", value=f"{buildings_count} шт.")
 
         with col_stat3:
-            st.metric(
-                label="🗑️ Удалено мелкого шума (<10м²)", 
-                value=f"{noise_count} объектов"
-            )
-
+            st.metric(label="🗑️ Удалено мелкого шума (<10м²)",  value=f"{noise_count} объектов")
 
 if __name__ == "__main__":
     main()
