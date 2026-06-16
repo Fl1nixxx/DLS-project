@@ -6,24 +6,50 @@ from torchvision import models
 def upsample_like(x, target):
     return F.interpolate(x,size=target.shape[2:],mode="bilinear",align_corners=True)
 
-class ConvBlock(nn.Module):
-    def __init__(self, in_channels, out_channels):
+class ChannelAttention(nn.Module):
+    def __init__(self, channels, reduction=16):
         super().__init__()
-
-        self.block = nn.Sequential(
-            nn.Conv2d(in_channels = in_channels, out_channels=out_channels, kernel_size=3, padding=1, bias = False),
-            nn.BatchNorm2d(out_channels),
-
-            nn.ReLU(inplace = True),
-
-            nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, padding = 1, bias = False),
-            nn.BatchNorm2d(out_channels),
-
-            nn.LeakyReLU(0.1, inplace = True)
+        self.fc = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(channels, channels // reduction, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(channels // reduction, channels, bias=False),
+            nn.Sigmoid()
         )
 
     def forward(self, x):
-        return self.block(x)
+        b, c, _, _ = x.size()
+        weights = self.fc(x).view(b, c, 1, 1)
+        return x * weights
+
+class ConvBlock(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        
+        self.reduce = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.LeakyReLU(0.1, inplace=True)
+            )
+
+        self.block = nn.Sequential(
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.LeakyReLU(0.1, inplace=True),
+            )
+
+        self.ca = ChannelAttention(out_channels)
+
+        self.act = nn.LeakyReLU(0.1, inplace=True)
+
+    def forward(self, x):
+        x_reduced = self.reduce(x)
+        
+        residual = self.block(x_reduced)
+        residual = self.ca(residual)
+        
+        return self.act(x_reduced + residual)
 
 class FLnet(nn.Module):
     def __init__(self, out_channels=1, deep_supervision=True):
