@@ -56,7 +56,7 @@ Data Explorer/
 
 **Остальные параметры**
 - **optimizer** : AdamW
-- **lr** L 0.003
+- **lr** : 0.003
 - **scheduler** : ReduceLROnPlatea
 - **Batch size** : 16
 - **epochs** : 50
