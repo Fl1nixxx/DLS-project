@@ -1,7 +1,7 @@
 import torch
 from torch.utils.data import DataLoader, random_split
 
-from Custom_dataset import BuildingsDataset
+from сustom_dataset import BuildingsDataset
 
 def get_loaders(root_dir,train_transform=None,val_transform=None,val_size=0.2,batch_size=16,seed=42):
 
