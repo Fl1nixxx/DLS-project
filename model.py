@@ -26,30 +26,25 @@ class ChannelAttention(nn.Module):
 class ConvBlock(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
-        
-        self.reduce = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.LeakyReLU(0.1, inplace=True)
-            )
 
         self.block = nn.Sequential(
-            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=False),
+
+            nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(out_channels),
-            nn.LeakyReLU(0.1, inplace=True),
-            )
+            nn.ReLU(inplace=True),
 
-        self.ca = ChannelAttention(out_channels)
+            nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.LeakyReLU(0.1, inplace=True))
 
-        self.act = nn.LeakyReLU(0.1, inplace=True)
+        self.se = ChannelAttention(channels=out_channels, reduction=16)
 
     def forward(self, x):
-        x_reduced = self.reduce(x)
-        
-        residual = self.block(x_reduced)
-        residual = self.ca(residual)
-        
-        return self.act(x_reduced + residual)
+
+        out = self.block(x)
+        out = self.se(out)
+
+        return out
 
 class FLnet(nn.Module):
     def __init__(self, out_channels=1, deep_supervision=True):
