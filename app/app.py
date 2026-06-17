@@ -93,8 +93,7 @@ def main():
 
     st.success(
         f"Файл загружен: `{uploaded_file.name}`. "
-        f"Размер изображения: {image.size[0]} x {image.size[1]} px"
-    )
+        f"Размер изображения: {image.size[0]} x {image.size[1]} px")
 
     try:
         model, device = load_segmentation_model()
@@ -136,7 +135,7 @@ def main():
                 else:
                     used_manual_fallback = False
 
-            total_area, buildings_count, noise_count = count_building_area(mask=res["raw_mask"], pixel_area=pixel_area, noise_threshold=10)
+            total_area = count_building_area(mask=res["raw_mask"], pixel_area=pixel_area, noise_threshold=10)
 
         except Exception as e:
             st.error("Ошибка при динамическом расчете площади застройки.")
@@ -178,15 +177,8 @@ def main():
 
         col_stat1, col_stat2, col_stat3 = st.columns(3)
 
-        with col_stat1:
-            st.metric(label="📐 Суммарная площадь застройки", value=f"{total_area:,.2f} м²".replace(",", " "))
-
         with col_stat2:
-            st.metric(label="🏠 Количество зданий", value=f"{buildings_count} шт.")
-
-        with col_stat3:
-            st.metric(label="🗑️ Удалено мелкого шума (<10м²)",  value=f"{noise_count} объектов")
-
+            st.metric(label="📐 Суммарная площадь застройки", value=f"{total_area:,.2f} м²".replace(",", " "))
 
 if __name__ == "__main__":
     main()
