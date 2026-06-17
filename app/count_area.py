@@ -30,9 +30,8 @@ def count_building_area(mask, pixel_area, noise_threshold=10):
         buildings_report.append(area_rounded)
         
     total_area = sum(buildings_report)
-    buildings_count = len(buildings_report)
     
-    return total_area, buildings_count, noise_count
+    return total_area
 
 def define_pixel_area(uploaded_file):
     try:
