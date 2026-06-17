@@ -14,6 +14,29 @@
 
 ---
 
+###Датасет
+
+В работе используется датасет **Inria Rooftop Segmentation Dataset**
+
+**Структура**
+
+```text
+Data Explorer/
+├── Arial_images_1024_1024/    
+│   ├── images/           
+│   ├── masks/            
+│   └── demo_bounding_box.jpg
+├── Arial_test_images/      
+│   └── images/           
+└── Arial_validation_images/  
+    ├── images/             
+    └── masks/
+```
+
+**Ссылка на скачивание** [Inria Rooftop Segmentation Dataset (1024x1024)](https://www.kaggle.com/datasets/dhruvpanchal1/inria-rooftop-segmentation-dataset-1024x1024-png)
+
+---
+
 ### Модель и архитектура
 
 В качестве базовой модели выбрана **U-Net++** с измененными сверточными слоями. Также в сеть интегрирован механизм Squeeze-and-Excitation (SE).  
