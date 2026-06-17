@@ -1,5 +1,8 @@
 ![Python](https://shields.io)
 ![PyTorch](https://shields.io)
+![License](https://shields.io)
+
+
 
 # DLS-project
 
