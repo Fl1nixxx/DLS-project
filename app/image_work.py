@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 from torchvision import transforms
 
-IMAGE_SIZE = 512
+IMAGE_SIZE = 672
 NORMALIZE_MEAN = [0.485, 0.456, 0.406]
 NORMALIZE_STD = [0.229, 0.224, 0.225]
 
