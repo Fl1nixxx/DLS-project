@@ -8,7 +8,7 @@ import urllib.request
 import streamlit as st
 import torch
 
-from model import build_model
+from src.model import build_model
 from count_area import count_building_area
 from count_area import define_pixel_area
 from image_work import read_image
