@@ -19,7 +19,7 @@ from image_work import make_mask_image
 from image_work import image_to_png_bytes
 
 WEIGHTS_PATH = "best_weights.pth"
-WEIGHTS_URL = "https://github.com/Fl1nixxx/DLS-project/releases/download/v1.5/best_weights.pth"
+WEIGHTS_URL = "https://github.com/Fl1nixxx/DLS-project/releases/download/v1.9/best_weights.pth"
 
 IMAGE_SIZE = 512
 NORMALIZE_MEAN = [0.485, 0.456, 0.406]
