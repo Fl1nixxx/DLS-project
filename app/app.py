@@ -21,7 +21,7 @@ from image_work import image_to_png_bytes
 WEIGHTS_PATH = "best_weights.pth"
 WEIGHTS_URL = "https://github.com/Fl1nixxx/DLS-project/releases/download/v1.9/best_weights.pth"
 
-IMAGE_SIZE = 512
+IMAGE_SIZE = 672
 NORMALIZE_MEAN = [0.485, 0.456, 0.406]
 NORMALIZE_STD = [0.229, 0.224, 0.225]
 
